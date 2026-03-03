@@ -1,15 +1,17 @@
 // ============================================================================
-// static_quench.js — Quench Tank Behavior and Rendering
+// static_quench.js — Quench Tank Behavior
 // Forgeworks Static Equipment Tier 4
 // ============================================================================
 // Defines a quench tank. Tracks quenchant temperature (rises as hot parts
 // are introduced, cools back to ambient). Newton's law cooling on products.
 //
+// Mesh building and liquid color handled by forgehousebuilder.js and
+// forgehousechanger.js respectively.
+//
 // Imports: worldclock.js, measurementunits.js, static_registry.js
-// Exports: Quench tank creation, update, product quenching, mesh building
+// Exports: Quench tank creation, update, product quenching
 // ============================================================================
 
-import * as THREE from 'three';
 import { getTime, getDelta } from '../infrastructure/worldclock.js';
 import { formatValue } from '../infrastructure/measurementunits.js';
 import * as registry from './static_registry.js';
@@ -29,14 +31,6 @@ const DEFAULT_SPECS = {
   overheatCount: 0,          // track overheat events
 };
 
-// Quenchant colors
-const QUENCHANT_COLORS = {
-  oil: 0x332200,
-  water: 0x224466,
-  polymer: 0x225533,
-  brine: 0x334455,
-};
-
 // ---------------------------------------------------------------------------
 // Creation
 // ---------------------------------------------------------------------------
@@ -50,10 +44,6 @@ export function createQuenchTank(name, gridX, gridZ, specOverrides) {
   var gridDepth = 3;
 
   var entry = registry.register('quench', name, gridX, gridZ, gridWidth, gridDepth, specs);
-
-  var mesh = buildQuenchMesh(specs, entry.id);
-  mesh.position.set(gridX + gridWidth / 2, 0, gridZ + gridDepth / 2);
-  entry.mesh = mesh;
 
   return entry;
 }
@@ -88,9 +78,6 @@ export function updateQuenchTank(id, delta) {
   }
 
   registry.updateStatus(id, specs.state === 'ready' ? 'idle' : 'active');
-
-  // Update liquid color based on temperature
-  updateQuenchLiquid(entry);
 }
 
 /**
@@ -175,117 +162,4 @@ export function getCurrentTemp(id) {
 export function isOverheated(id) {
   var entry = registry.get(id);
   return entry ? entry.specs.state === 'overheated' : false;
-}
-
-// ---------------------------------------------------------------------------
-// 3D Mesh Generation
-// ---------------------------------------------------------------------------
-
-export function buildQuenchMesh(specs, registryId) {
-  var group = new THREE.Group();
-
-  var w = 3;
-  var d = 3;
-  var h = 1.2;
-  var wallThickness = 0.15;
-
-  var tankMat = new THREE.MeshStandardMaterial({
-    color: 0x445566,
-    roughness: 0.6,
-    metalness: 0.4,
-  });
-
-  // Tank walls (4 sides, open top)
-  // Front wall
-  var frontGeo = new THREE.BoxGeometry(w, h, wallThickness);
-  var front = new THREE.Mesh(frontGeo, tankMat);
-  front.position.set(0, h / 2, d / 2 - wallThickness / 2);
-  front.castShadow = true;
-  front.userData.visibilityCategory = 'quenchTanks';
-  group.add(front);
-
-  // Back wall
-  var back = new THREE.Mesh(frontGeo, tankMat);
-  back.position.set(0, h / 2, -d / 2 + wallThickness / 2);
-  back.castShadow = true;
-  back.userData.visibilityCategory = 'quenchTanks';
-  group.add(back);
-
-  // Left wall
-  var sideGeo = new THREE.BoxGeometry(wallThickness, h, d);
-  var left = new THREE.Mesh(sideGeo, tankMat);
-  left.position.set(-w / 2 + wallThickness / 2, h / 2, 0);
-  left.castShadow = true;
-  left.userData.visibilityCategory = 'quenchTanks';
-  group.add(left);
-
-  // Right wall
-  var right = new THREE.Mesh(sideGeo, tankMat);
-  right.position.set(w / 2 - wallThickness / 2, h / 2, 0);
-  right.castShadow = true;
-  right.userData.visibilityCategory = 'quenchTanks';
-  group.add(right);
-
-  // Bottom
-  var bottomGeo = new THREE.BoxGeometry(w, wallThickness, d);
-  var bottom = new THREE.Mesh(bottomGeo, tankMat);
-  bottom.position.set(0, wallThickness / 2, 0);
-  bottom.receiveShadow = true;
-  bottom.userData.visibilityCategory = 'quenchTanks';
-  group.add(bottom);
-
-  // Liquid surface (semi-transparent)
-  var liquidColor = QUENCHANT_COLORS[specs.quenchantType] || 0x224466;
-  var liquidGeo = new THREE.PlaneGeometry(w - wallThickness * 2, d - wallThickness * 2);
-  var liquidMat = new THREE.MeshStandardMaterial({
-    color: liquidColor,
-    transparent: true,
-    opacity: 0.6,
-    roughness: 0.2,
-    metalness: 0.1,
-    side: THREE.DoubleSide,
-  });
-  var liquid = new THREE.Mesh(liquidGeo, liquidMat);
-  liquid.rotation.x = -Math.PI / 2;
-  liquid.position.y = h * 0.75;
-  liquid.userData.visibilityCategory = 'quenchTanks';
-  liquid.userData.isLiquid = true;
-  group.add(liquid);
-
-  group.userData.visibilityCategory = 'quenchTanks';
-  group.userData.registryId = registryId;
-  group.userData.registryType = 'quench';
-
-  return group;
-}
-
-// PERF: Pre-allocated Color objects for quench liquid updates
-const _quenchBaseColor = new THREE.Color();
-const _quenchHotColor = new THREE.Color(0x664422);
-
-function updateQuenchLiquid(entry) {
-  if (!entry.mesh) return;
-
-  var specs = entry.specs;
-
-  // Skip if temperature hasn't changed meaningfully
-  var lastTemp = entry._lastLiquidTemp;
-  if (lastTemp !== undefined && Math.abs(specs.currentTemp - lastTemp) < 1) return;
-  entry._lastLiquidTemp = specs.currentTemp;
-
-  var tempRatio = Math.min(1, (specs.currentTemp - specs.ambientTemp) / specs.maxTempRise);
-
-  // Cache the liquid mesh child
-  if (!entry._liquidMesh) {
-    entry.mesh.traverse(function(child) {
-      if (child.userData && child.userData.isLiquid && child.isMesh) {
-        entry._liquidMesh = child;
-      }
-    });
-  }
-  var liquid = entry._liquidMesh;
-  if (!liquid) return;
-
-  _quenchBaseColor.set(QUENCHANT_COLORS[specs.quenchantType] || 0x224466);
-  liquid.material.color.copy(_quenchBaseColor).lerp(_quenchHotColor, tempRatio);
 }

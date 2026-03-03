@@ -1,5 +1,5 @@
 // ============================================================================
-// mobile_forklift.js — Forklift Behavior and Rendering
+// mobile_forklift.js — Forklift Behavior
 // Forgeworks Mobile Equipment Tier 5
 // ============================================================================
 // Defines a forklift: the primary mover of cold/warm material between
@@ -9,11 +9,13 @@
 // Position tracking: preciseX/Z for smooth rendering, gridX/Z updated
 // when crossing cell boundaries.
 //
+// Mesh building and visual updates handled by forgehousebuilder.js and
+// forgehousechanger.js respectively.
+//
 // Imports: worldclock.js, measurementunits.js, mobile_registry.js
 // Exports: Forklift creation, update, route assignment, pickup/putdown
 // ============================================================================
 
-import * as THREE from 'three';
 import { getTime, getDelta } from '../infrastructure/worldclock.js';
 import { formatValue } from '../infrastructure/measurementunits.js';
 import * as registry from './mobile_registry.js';
@@ -52,10 +54,6 @@ export function createForklift(name, homeGridX, homeGridZ, specOverrides) {
   var entry = registry.register('forklift', name, homeGridX, homeGridZ, 2, 3, specs);
   entry.homeGridX = homeGridX;
   entry.homeGridZ = homeGridZ;
-
-  var mesh = buildForkliftMesh(specs, entry.id);
-  mesh.position.set(specs.preciseX, 0, specs.preciseZ);
-  entry.mesh = mesh;
 
   return entry;
 }
@@ -118,12 +116,6 @@ export function updateForklift(id, delta) {
     specs.heading = Math.atan2(dx, dz);
 
     registry.updatePrecisePosition(id, specs.preciseX, specs.preciseZ);
-  }
-
-  // Update mesh position and rotation
-  if (entry.mesh) {
-    entry.mesh.position.set(specs.preciseX, 0, specs.preciseZ);
-    entry.mesh.rotation.y = specs.heading;
   }
 }
 
@@ -194,9 +186,6 @@ export function pickUp(id, productId, weight) {
   entry.specs.forkHeight = 0.5; // raise forks
   entry.specs.state = 'traveling'; // ready to move again
 
-  // Animate fork raise
-  if (entry.mesh) updateForkHeight(entry.mesh, 0.5);
-
   return true;
 }
 
@@ -215,8 +204,6 @@ export function putDown(id) {
   entry.specs.state = 'idle';
 
   registry.clearTask(id);
-
-  if (entry.mesh) updateForkHeight(entry.mesh, 0);
 
   return productId;
 }
@@ -245,92 +232,4 @@ export function getPosition(id) {
   var entry = registry.get(id);
   if (!entry) return null;
   return { x: entry.specs.preciseX, z: entry.specs.preciseZ };
-}
-
-// ---------------------------------------------------------------------------
-// 3D Mesh
-// ---------------------------------------------------------------------------
-
-export function buildForkliftMesh(specs, registryId) {
-  var group = new THREE.Group();
-
-  var bodyMat = new THREE.MeshStandardMaterial({
-    color: 0xccaa33,
-    roughness: 0.6,
-    metalness: 0.3,
-  });
-
-  // Body
-  var bodyGeo = new THREE.BoxGeometry(1.4, 1.0, 2.2);
-  var body = new THREE.Mesh(bodyGeo, bodyMat);
-  body.position.set(0, 0.7, 0);
-  body.castShadow = true;
-  body.userData.visibilityCategory = 'forklifts';
-  group.add(body);
-
-  // Cab/roof
-  var cabGeo = new THREE.BoxGeometry(1.2, 0.6, 1.0);
-  var cabMat = new THREE.MeshStandardMaterial({ color: 0x888866, roughness: 0.7, metalness: 0.2 });
-  var cab = new THREE.Mesh(cabGeo, cabMat);
-  cab.position.set(0, 1.5, -0.3);
-  cab.castShadow = true;
-  cab.userData.visibilityCategory = 'forklifts';
-  group.add(cab);
-
-  // Mast (vertical rails in front)
-  var mastMat = new THREE.MeshStandardMaterial({ color: 0x666655, roughness: 0.5, metalness: 0.5 });
-  var mastGeo = new THREE.BoxGeometry(0.1, 2.5, 0.1);
-  var leftMast = new THREE.Mesh(mastGeo, mastMat);
-  leftMast.position.set(-0.4, 1.45, 1.0);
-  leftMast.userData.visibilityCategory = 'forklifts';
-  group.add(leftMast);
-
-  var rightMast = new THREE.Mesh(mastGeo, mastMat);
-  rightMast.position.set(0.4, 1.45, 1.0);
-  rightMast.userData.visibilityCategory = 'forklifts';
-  group.add(rightMast);
-
-  // Fork tines
-  var forkMat = new THREE.MeshStandardMaterial({ color: 0x555555, roughness: 0.4, metalness: 0.6 });
-  var forkGeo = new THREE.BoxGeometry(0.15, 0.08, 1.2);
-  var leftFork = new THREE.Mesh(forkGeo, forkMat);
-  leftFork.position.set(-0.35, 0.2, 1.5);
-  leftFork.userData.visibilityCategory = 'forklifts';
-  leftFork.userData.isFork = true;
-  group.add(leftFork);
-
-  var rightFork = new THREE.Mesh(forkGeo, forkMat);
-  rightFork.position.set(0.35, 0.2, 1.5);
-  rightFork.userData.visibilityCategory = 'forklifts';
-  rightFork.userData.isFork = true;
-  group.add(rightFork);
-
-  // Wheels (simple cylinders)
-  var wheelMat = new THREE.MeshStandardMaterial({ color: 0x222222, roughness: 0.9 });
-  var wheelGeo = new THREE.CylinderGeometry(0.25, 0.25, 0.2, 8);
-  var wheelPositions = [
-    [-0.7, 0.25, -0.7], [0.7, 0.25, -0.7],
-    [-0.7, 0.25, 0.7],  [0.7, 0.25, 0.7],
-  ];
-  for (var w = 0; w < wheelPositions.length; w++) {
-    var wheel = new THREE.Mesh(wheelGeo, wheelMat);
-    wheel.rotation.z = Math.PI / 2;
-    wheel.position.set(wheelPositions[w][0], wheelPositions[w][1], wheelPositions[w][2]);
-    wheel.userData.visibilityCategory = 'forklifts';
-    group.add(wheel);
-  }
-
-  group.userData.visibilityCategory = 'forklifts';
-  group.userData.registryId = registryId;
-  group.userData.registryType = 'forklift';
-
-  return group;
-}
-
-function updateForkHeight(mesh, height) {
-  mesh.traverse(function(child) {
-    if (child.userData && child.userData.isFork) {
-      child.position.y = 0.2 + height;
-    }
-  });
 }

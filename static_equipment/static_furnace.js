@@ -1,17 +1,18 @@
 // ============================================================================
-// static_furnace.js — Furnace Behavior and Rendering
+// static_furnace.js — Furnace Behavior
 // Forgeworks Static Equipment Tier 4
 // ============================================================================
-// Defines the data structure, behavior, and 3D representation of a furnace.
+// Defines the data structure and behavior of a furnace.
 // A furnace heats products to target temperature over time, holds at setpoint,
-// and cools when turned off. Visual color shifts from dark grey to glowing
-// orange based on current temperature.
+// and cools when turned off.
+//
+// Mesh building and color updates are handled by forgehousebuilder.js and
+// forgehousechanger.js respectively.
 //
 // Imports: worldclock.js, measurementunits.js, static_registry.js
-// Exports: Furnace creation, update, product loading/unloading, mesh building
+// Exports: Furnace creation, update, controls, product loading/unloading
 // ============================================================================
 
-import * as THREE from 'three';
 import { getTime, getDelta } from '../infrastructure/worldclock.js';
 import { formatValue } from '../infrastructure/measurementunits.js';
 import * as registry from './static_registry.js';
@@ -33,39 +34,6 @@ const DEFAULT_SPECS = {
   contents: [],            // product IDs currently inside
   maxContents: 4,          // max products at once
 };
-
-// ---------------------------------------------------------------------------
-// Temperature-to-Color Mapping
-// ---------------------------------------------------------------------------
-// Cold (25C) = dark grey, hot (1300C) = bright yellow-orange
-
-// PERF: Reuse a single Color object to avoid per-frame allocations
-const _furnaceTempColor = new THREE.Color();
-
-function getTemperatureColor(temp, maxTemp) {
-  var t = Math.max(0, Math.min(1, (temp - 25) / (maxTemp - 25)));
-
-  // 4-stop gradient: grey -> dull red -> orange -> yellow
-  var r, g, b;
-  if (t < 0.33) {
-    var s = t / 0.33;
-    r = 0.2 + s * 0.47;    // 0.2 -> 0.67
-    g = 0.2 - s * 0.07;    // 0.2 -> 0.13
-    b = 0.2 - s * 0.2;     // 0.2 -> 0.0
-  } else if (t < 0.66) {
-    var s = (t - 0.33) / 0.33;
-    r = 0.67 + s * 0.33;   // 0.67 -> 1.0
-    g = 0.13 + s * 0.14;   // 0.13 -> 0.27
-    b = 0.0;
-  } else {
-    var s = (t - 0.66) / 0.34;
-    r = 1.0;
-    g = 0.27 + s * 0.53;   // 0.27 -> 0.8
-    b = s * 0.1;            // 0.0 -> 0.1
-  }
-
-  return _furnaceTempColor.setRGB(r, g, b);
-}
 
 // ---------------------------------------------------------------------------
 // Furnace Creation
@@ -95,15 +63,6 @@ export function createFurnace(name, gridX, gridZ, specOverrides) {
   var gridDepth = specs.chamberSize.depth + 1;
 
   var entry = registry.register('furnace', name, gridX, gridZ, gridWidth, gridDepth, specs);
-
-  // Build and attach mesh
-  var mesh = buildFurnaceMesh(specs, entry.id);
-  mesh.position.set(
-    gridX + gridWidth / 2,
-    0,
-    gridZ + gridDepth / 2
-  );
-  entry.mesh = mesh;
 
   return entry;
 }
@@ -158,9 +117,6 @@ export function updateFurnace(id, delta) {
 
   // Update status in registry
   registry.updateStatus(id, specs.state === 'idle' ? 'idle' : 'active');
-
-  // Update mesh color to reflect temperature
-  updateFurnaceMeshColor(entry);
 }
 
 // ---------------------------------------------------------------------------
@@ -273,99 +229,4 @@ export function isAtTarget(id) {
   var entry = registry.get(id);
   if (!entry) return false;
   return entry.specs.state === 'holding' && entry.specs.currentTemp >= entry.specs.targetTemp - 5;
-}
-
-// ---------------------------------------------------------------------------
-// 3D Mesh Generation
-// ---------------------------------------------------------------------------
-
-/**
- * Build a furnace mesh: box body with inset door face, colored by temperature.
- */
-export function buildFurnaceMesh(specs, registryId) {
-  var group = new THREE.Group();
-
-  var w = (specs.chamberSize.width + 1);
-  var d = (specs.chamberSize.depth + 1);
-  var h = specs.chamberSize.height + 0.5;
-
-  // Main body
-  var bodyGeo = new THREE.BoxGeometry(w, h, d);
-  var bodyMat = new THREE.MeshStandardMaterial({
-    color: 0x333333,
-    roughness: 0.8,
-    metalness: 0.3,
-  });
-  var body = new THREE.Mesh(bodyGeo, bodyMat);
-  body.position.y = h / 2;
-  body.castShadow = true;
-  body.receiveShadow = true;
-  body.userData.registryId = registryId;
-  body.userData.registryType = 'furnace';
-  body.userData.visibilityCategory = 'furnaces';
-  body.userData.isFurnaceBody = true;
-  group.add(body);
-
-  // Door face (front, slightly protruding)
-  var doorW = w * 0.6;
-  var doorH = h * 0.7;
-  var doorGeo = new THREE.BoxGeometry(doorW, doorH, 0.15);
-  var doorMat = new THREE.MeshStandardMaterial({
-    color: 0x555555,
-    roughness: 0.6,
-    metalness: 0.4,
-  });
-  var door = new THREE.Mesh(doorGeo, doorMat);
-  door.position.set(0, doorH / 2 + 0.1, d / 2 + 0.08);
-  door.castShadow = true;
-  door.userData.visibilityCategory = 'furnaces';
-  group.add(door);
-
-  // Chimney/vent on top
-  var ventGeo = new THREE.CylinderGeometry(0.2, 0.3, 0.6, 8);
-  var ventMat = new THREE.MeshStandardMaterial({ color: 0x444444, roughness: 0.7, metalness: 0.3 });
-  var vent = new THREE.Mesh(ventGeo, ventMat);
-  vent.position.set(0, h + 0.3, 0);
-  vent.userData.visibilityCategory = 'furnaces';
-  group.add(vent);
-
-  group.userData.visibilityCategory = 'furnaces';
-  group.userData.registryId = registryId;
-  group.userData.registryType = 'furnace';
-
-  return group;
-}
-
-/**
- * Update furnace mesh color based on current temperature.
- * PERF: Caches body mesh, skips if temp hasn't changed by >2°C, reuses Color.
- */
-const _furnaceEmissive = new THREE.Color();
-
-function updateFurnaceMeshColor(entry) {
-  if (!entry.mesh) return;
-
-  // Skip if temperature hasn't changed meaningfully
-  var lastTemp = entry._lastColorTemp;
-  if (lastTemp !== undefined && Math.abs(entry.specs.currentTemp - lastTemp) < 2) return;
-  entry._lastColorTemp = entry.specs.currentTemp;
-
-  // Cache the furnace body mesh child
-  if (!entry._bodyMesh) {
-    entry.mesh.traverse(function(child) {
-      if (child.isMesh && child.userData.isFurnaceBody) {
-        entry._bodyMesh = child;
-      }
-    });
-  }
-  var body = entry._bodyMesh;
-  if (!body) return;
-
-  var color = getTemperatureColor(entry.specs.currentTemp, entry.specs.maxTemp);
-  var emissiveIntensity = Math.max(0, (entry.specs.currentTemp - 100) / entry.specs.maxTemp) * 0.6;
-
-  body.material.color.copy(color);
-  _furnaceEmissive.copy(color).multiplyScalar(0.5);
-  body.material.emissive.copy(_furnaceEmissive);
-  body.material.emissiveIntensity = emissiveIntensity;
 }

@@ -9,11 +9,12 @@
 // Tracks tool type, dimensions, material compatibility, wear state, and
 // current location. Important for production scheduling.
 //
+// Mesh building handled by forgehousebuilder.js.
+//
 // Imports: worldclock.js, measurementunits.js, mobile_registry.js
-// Exports: Tool creation, update, install/remove, wear tracking, mesh
+// Exports: Tool creation, update, install/remove, wear tracking
 // ============================================================================
 
-import * as THREE from 'three';
 import { getTime, getDelta } from '../infrastructure/worldclock.js';
 import { formatValue } from '../infrastructure/measurementunits.js';
 import * as registry from './mobile_registry.js';
@@ -31,14 +32,6 @@ const DEFAULT_SPECS = {
   installedOn: null,           // equipment ID if installed
   state: 'stored',            // stored, in_transit, installed, worn_out
   useCount: 0,
-};
-
-// Tool type visual colors
-const TOOL_COLORS = {
-  die: 0x996699,
-  disc: 0x669999,
-  cutter: 0x999966,
-  fixture: 0x887766,
 };
 
 // ---------------------------------------------------------------------------
@@ -59,10 +52,6 @@ export function createTool(name, toolType, gridX, gridZ, specOverrides) {
   }
 
   var entry = registry.register('tool', name, gridX, gridZ, 1, 1, specs);
-
-  var mesh = buildToolMesh(specs, entry.id);
-  mesh.position.set(gridX + 0.5, 0, gridZ + 0.5);
-  entry.mesh = mesh;
 
   return entry;
 }
@@ -191,47 +180,4 @@ export function setLocation(id, locationId) {
   if (!entry) return false;
   entry.specs.location = locationId;
   return true;
-}
-
-// ---------------------------------------------------------------------------
-// 3D Mesh
-// ---------------------------------------------------------------------------
-
-export function buildToolMesh(specs, registryId) {
-  var group = new THREE.Group();
-
-  var color = TOOL_COLORS[specs.toolType] || 0x888888;
-  var dims = specs.dimensions;
-
-  var toolMat = new THREE.MeshStandardMaterial({
-    color: color,
-    roughness: 0.4,
-    metalness: 0.6,
-  });
-
-  var toolGeo;
-  if (specs.toolType === 'die') {
-    // Die: flat rectangular block
-    toolGeo = new THREE.BoxGeometry(dims.width, dims.height, dims.depth);
-  } else if (specs.toolType === 'disc') {
-    // Disc: cylinder
-    toolGeo = new THREE.CylinderGeometry(dims.width / 2, dims.width / 2, dims.height, 16);
-  } else {
-    // Default box
-    toolGeo = new THREE.BoxGeometry(dims.width, dims.height, dims.depth);
-  }
-
-  var tool = new THREE.Mesh(toolGeo, toolMat);
-  tool.position.y = dims.height / 2;
-  tool.castShadow = true;
-  tool.userData.visibilityCategory = 'tools';
-  tool.userData.registryId = registryId;
-  tool.userData.registryType = 'tool';
-  group.add(tool);
-
-  group.userData.visibilityCategory = 'tools';
-  group.userData.registryId = registryId;
-  group.userData.registryType = 'tool';
-
-  return group;
 }

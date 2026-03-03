@@ -1,15 +1,16 @@
 // ============================================================================
-// static_press.js — Press Behavior and Rendering
+// static_press.js — Press Behavior
 // Forgeworks Static Equipment Tier 4
 // ============================================================================
-// Defines an industrial forging press. Handles cycle timing, product
-// deformation (volume conservation), and animated ram stroke.
+// Defines an industrial forging press. Handles cycle timing and force calc.
+//
+// Mesh building and ram animation handled by forgehousebuilder.js and
+// forgehousechanger.js respectively.
 //
 // Imports: worldclock.js, measurementunits.js, static_registry.js
-// Exports: Press creation, update, cycle control, mesh building
+// Exports: Press creation, update, cycle control
 // ============================================================================
 
-import * as THREE from 'three';
 import { getTime, getDelta } from '../infrastructure/worldclock.js';
 import { formatValue } from '../infrastructure/measurementunits.js';
 import * as registry from './static_registry.js';
@@ -44,10 +45,6 @@ export function createPress(name, gridX, gridZ, specOverrides) {
 
   var entry = registry.register('press', name, gridX, gridZ, gridWidth, gridDepth, specs);
 
-  var mesh = buildPressMesh(specs, entry.id);
-  mesh.position.set(gridX + gridWidth / 2, 0, gridZ + gridDepth / 2);
-  entry.mesh = mesh;
-
   return entry;
 }
 
@@ -74,9 +71,6 @@ export function updatePress(id, delta) {
       specs.forceApplied = 0;
       registry.updateStatus(id, 'idle');
     }
-
-    // Animate ram
-    updatePressRam(entry);
   }
 }
 
@@ -121,9 +115,6 @@ export function completeCycle(id) {
   entry.specs.forceApplied = 0;
   registry.updateStatus(id, 'idle');
 
-  // Reset ram position
-  updatePressRam(entry);
-
   return productId;
 }
 
@@ -159,97 +150,4 @@ export function isIdle(id) {
   var entry = registry.get(id);
   if (!entry) return false;
   return entry.specs.state === 'idle';
-}
-
-// ---------------------------------------------------------------------------
-// 3D Mesh Generation
-// ---------------------------------------------------------------------------
-
-export function buildPressMesh(specs, registryId) {
-  var group = new THREE.Group();
-
-  var baseW = 3;
-  var baseD = 4;
-  var frameH = 4;
-
-  var frameMat = new THREE.MeshStandardMaterial({
-    color: 0x556677,
-    roughness: 0.6,
-    metalness: 0.5,
-  });
-
-  // Base plate
-  var baseGeo = new THREE.BoxGeometry(baseW, 0.4, baseD);
-  var base = new THREE.Mesh(baseGeo, frameMat);
-  base.position.y = 0.2;
-  base.castShadow = true;
-  base.receiveShadow = true;
-  base.userData.visibilityCategory = 'presses';
-  group.add(base);
-
-  // Left column
-  var colGeo = new THREE.BoxGeometry(0.4, frameH, 0.5);
-  var leftCol = new THREE.Mesh(colGeo, frameMat);
-  leftCol.position.set(-baseW / 2 + 0.3, frameH / 2 + 0.4, 0);
-  leftCol.castShadow = true;
-  leftCol.userData.visibilityCategory = 'presses';
-  group.add(leftCol);
-
-  // Right column
-  var rightCol = new THREE.Mesh(colGeo, frameMat);
-  rightCol.position.set(baseW / 2 - 0.3, frameH / 2 + 0.4, 0);
-  rightCol.castShadow = true;
-  rightCol.userData.visibilityCategory = 'presses';
-  group.add(rightCol);
-
-  // Crown (top beam)
-  var crownGeo = new THREE.BoxGeometry(baseW, 0.5, 1.2);
-  var crown = new THREE.Mesh(crownGeo, frameMat);
-  crown.position.set(0, frameH + 0.15, 0);
-  crown.castShadow = true;
-  crown.userData.visibilityCategory = 'presses';
-  group.add(crown);
-
-  // Ram (moving part)
-  var ramMat = new THREE.MeshStandardMaterial({
-    color: 0x778899,
-    roughness: 0.4,
-    metalness: 0.6,
-  });
-  var ramGeo = new THREE.BoxGeometry(baseW * 0.7, 0.6, 1.0);
-  var ram = new THREE.Mesh(ramGeo, ramMat);
-  ram.position.set(0, frameH - 0.3, 0);
-  ram.castShadow = true;
-  ram.userData.visibilityCategory = 'presses';
-  ram.userData.isRam = true;
-  group.add(ram);
-
-  group.userData.visibilityCategory = 'presses';
-  group.userData.registryId = registryId;
-  group.userData.registryType = 'press';
-  group.userData.frameHeight = frameH;
-  group.userData.strokeLength = specs.strokeLength || 0.5;
-
-  return group;
-}
-
-function updatePressRam(entry) {
-  if (!entry.mesh) return;
-  var frameH = entry.mesh.userData.frameHeight || 4;
-  var strokeLen = entry.mesh.userData.strokeLength || 0.5;
-
-  // Ram at top = 0, ram at bottom = 0.5 progress, back up = 1.0
-  var progress = entry.specs.cycleProgress;
-  var phase = progress <= 0.5 ? progress * 2 : (1 - progress) * 2;
-  var ramY = frameH - 0.3 - (phase * strokeLen * 2);
-
-  // Cache ram mesh child to avoid traverse every frame
-  if (!entry._ramMesh) {
-    entry.mesh.traverse(function(child) {
-      if (child.userData && child.userData.isRam) {
-        entry._ramMesh = child;
-      }
-    });
-  }
-  if (entry._ramMesh) entry._ramMesh.position.y = ramY;
 }

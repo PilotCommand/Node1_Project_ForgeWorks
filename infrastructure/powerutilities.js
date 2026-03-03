@@ -5,14 +5,15 @@
 // Models the forge power distribution and utility systems: electrical
 // panels, gas lines, water/coolant lines, and compressed air.
 //
-// Imports: worldclock.js, measurementunits.js, floorplan.js
+// Mesh building handled by forgehousebuilder.js.
+//
+// Imports: worldclock.js, measurementunits.js, gridsquare.js
 // Exports: Utility connection registry, capacity queries, validation
 // ============================================================================
 
 import { getTime } from './worldclock.js';
 import { formatValue } from './measurementunits.js';
-import { getCell, getGridWidth, getGridDepth } from './floorplan.js';
-import * as THREE from 'three';
+import { getCell, getGridWidth, getGridDepth } from './gridsquare.js';
 
 // ---------------------------------------------------------------------------
 // Default Requirements per Equipment Type (SI units)
@@ -216,36 +217,6 @@ export function validatePlacementFull(equipmentType, gridX, gridZ, gWidth, gDept
     };
   }
   return { valid: basic.valid, errors: basic.reasons, warnings: [], utilityDetail: detail };
-}
-
-// ---------------------------------------------------------------------------
-// Utility Visualization
-// ---------------------------------------------------------------------------
-
-export function buildUtilityMeshes() {
-  var group = new THREE.Group();
-  group.userData.visibilityCategory = 'utilities';
-  var typeColors = { electrical: 0xffff00, gas: 0xff4444, water: 0x4444ff, compressed_air: 0x44ff44 };
-
-  for (var t = 0; t < UTILITY_TYPES.length; t++) {
-    var uType = UTILITY_TYPES[t];
-    var color = typeColors[uType];
-    var list = utilities[uType];
-    for (var i = 0; i < list.length; i++) {
-      var conn = list[i];
-      var markerGeo = new THREE.CylinderGeometry(0.3, 0.3, 0.1, 8);
-      var markerMat = new THREE.MeshStandardMaterial({
-        color: color, emissive: color, emissiveIntensity: 0.3, transparent: true, opacity: 0.7,
-      });
-      var marker = new THREE.Mesh(markerGeo, markerMat);
-      marker.position.set(conn.gridX + 0.5, 0.05, conn.gridZ + 0.5);
-      marker.userData.visibilityCategory = 'utilities';
-      marker.userData.utilityId = conn.id;
-      marker.userData.utilityType = uType;
-      group.add(marker);
-    }
-  }
-  return group;
 }
 
 // ---------------------------------------------------------------------------

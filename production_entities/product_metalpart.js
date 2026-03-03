@@ -7,77 +7,16 @@
 // (dimensions change with volume conservation), quenching (temperature
 // drops via Newton's law), and storage (ambient cooling).
 //
-// 3D mesh is a simple block/cylinder colored by temperature:
-//   25C = grey, 400C = dull red, 800C = orange-red, 1100C = bright orange,
-//   1300C = yellow.
-//
-// This file will eventually be supplemented by specific product definitions,
-// but its structure serves as the template for all future product types.
+// Mesh building, color updates, position, and visibility handled by
+// forgehousebuilder.js and forgehousechanger.js respectively.
 //
 // Imports: worldclock.js, measurementunits.js, product_registry.js
-// Exports: MetalPart creation, update, operation handlers, mesh building
+// Exports: MetalPart creation, update, operation handlers
 // ============================================================================
 
-import * as THREE from 'three';
 import { getTime, getDelta } from '../infrastructure/worldclock.js';
 import { formatValue } from '../infrastructure/measurementunits.js';
 import * as registry from './product_registry.js';
-
-// ---------------------------------------------------------------------------
-// Temperature-to-Color Mapping
-// ---------------------------------------------------------------------------
-// 5-stop gradient matching the coding plan specification:
-//   25C   -> #666666 (grey)
-//   400C  -> #aa2200 (dull red)
-//   800C  -> #ff4400 (orange-red)
-//   1100C -> #ff8800 (bright orange)
-//   1300C -> #ffcc00 (yellow)
-
-const TEMP_STOPS = [
-  { temp: 25,   r: 0.40, g: 0.40, b: 0.40 },
-  { temp: 400,  r: 0.67, g: 0.13, b: 0.00 },
-  { temp: 800,  r: 1.00, g: 0.27, b: 0.00 },
-  { temp: 1100, r: 1.00, g: 0.53, b: 0.00 },
-  { temp: 1300, r: 1.00, g: 0.80, b: 0.00 },
-];
-
-/**
- * Get the RGB color for a given temperature by interpolating between stops.
- * PERF: Reuses a single THREE.Color to avoid per-frame allocations.
- * @param {number} temp - Temperature in Celsius
- * @param {THREE.Color} [target] - Optional Color to write into (avoids allocation)
- * @returns {THREE.Color}
- */
-const _tempColor = new THREE.Color();
-
-export function getTemperatureColor(temp, target) {
-  var out = target || _tempColor;
-
-  // Clamp to range
-  if (temp <= TEMP_STOPS[0].temp) {
-    return out.setRGB(TEMP_STOPS[0].r, TEMP_STOPS[0].g, TEMP_STOPS[0].b);
-  }
-  var last = TEMP_STOPS[TEMP_STOPS.length - 1];
-  if (temp >= last.temp) {
-    return out.setRGB(last.r, last.g, last.b);
-  }
-
-  // Find the two stops we're between
-  for (var i = 0; i < TEMP_STOPS.length - 1; i++) {
-    var lo = TEMP_STOPS[i];
-    var hi = TEMP_STOPS[i + 1];
-    if (temp >= lo.temp && temp <= hi.temp) {
-      var t = (temp - lo.temp) / (hi.temp - lo.temp);
-      return out.setRGB(
-        lo.r + (hi.r - lo.r) * t,
-        lo.g + (hi.g - lo.g) * t,
-        lo.b + (hi.b - lo.b) * t
-      );
-    }
-  }
-
-  return out.setRGB(0.4, 0.4, 0.4);
-}
 
 // ---------------------------------------------------------------------------
 // Ambient Cooling Rate
@@ -103,16 +42,6 @@ const AMBIENT_COOLING_COEFFICIENT = 0.002; // Newton's law coefficient for air
  */
 export function createMetalPart(materialGrade, dimensions, weight, options) {
   var entry = registry.register(materialGrade, dimensions, weight, options || {});
-
-  // Build and attach mesh
-  var mesh = buildMetalPartMesh(entry.dimensions, entry.id);
-
-  // Position will be set by mainlogic based on the product's location
-  // (the container's grid position). Start invisible until placed.
-  mesh.visible = false;
-
-  entry.mesh = mesh;
-  registry.setMesh(entry.id, mesh);
 
   return entry;
 }
@@ -145,9 +74,6 @@ export function updateMetalPart(id, delta) {
     if (entry.temperature < AMBIENT_TEMP) entry.temperature = AMBIENT_TEMP;
     registry.updateTemperature(id, entry.temperature);
   }
-
-  // Update mesh color
-  updateMeshColor(entry);
 }
 
 // ---------------------------------------------------------------------------
@@ -216,9 +142,6 @@ export function applyForging(id, reductionRatio) {
   };
 
   registry.updateDimensions(id, newDims);
-
-  // Update mesh geometry to reflect new shape
-  updateMeshGeometry(entry);
 
   return newDims;
 }
@@ -292,158 +215,4 @@ export function getDeformationRatio(id) {
     width: entry.dimensions.width / entry.originalDimensions.width,
     height: entry.dimensions.height / entry.originalDimensions.height,
   };
-}
-
-// ---------------------------------------------------------------------------
-// 3D Mesh Generation
-// ---------------------------------------------------------------------------
-
-/**
- * Build a metal part mesh. Simple box geometry colored by temperature.
- * Mesh scale will update as dimensions change during forging.
- */
-export function buildMetalPartMesh(dimensions, registryId) {
-  var group = new THREE.Group();
-
-  // Use a box geometry at unit scale; we'll set scale from dimensions
-  var geo = new THREE.BoxGeometry(1, 1, 1);
-  var mat = new THREE.MeshStandardMaterial({
-    color: 0x666666,
-    roughness: 0.5,
-    metalness: 0.4,
-  });
-
-  var mesh = new THREE.Mesh(geo, mat);
-
-  // Scale to actual dimensions
-  mesh.scale.set(
-    dimensions.width || 0.15,
-    dimensions.height || 0.15,
-    dimensions.length || 0.5
-  );
-  mesh.position.y = (dimensions.height || 0.15) / 2;
-
-  mesh.castShadow = true;
-  mesh.userData.visibilityCategory = 'products';
-  mesh.userData.registryId = registryId;
-  mesh.userData.registryType = 'metalpart';
-  mesh.userData.isProductBody = true;
-
-  group.add(mesh);
-
-  group.userData.visibilityCategory = 'products';
-  group.userData.registryId = registryId;
-  group.userData.registryType = 'metalpart';
-
-  return group;
-}
-
-// ---------------------------------------------------------------------------
-// Mesh Updates
-// ---------------------------------------------------------------------------
-
-/**
- * Update mesh color based on current temperature.
- * PERF: Skips if temperature hasn't changed by more than 1°C since last update.
- *       Caches the child mesh reference to avoid traverse() every frame.
- *       Reuses Color objects to avoid per-frame allocations.
- */
-const _emissiveColor = new THREE.Color();
-const _blackColor = new THREE.Color(0, 0, 0);
-
-function updateMeshColor(entry) {
-  if (!entry.mesh) return;
-
-  // Skip if temperature hasn't changed meaningfully
-  var lastTemp = entry._lastColorTemp;
-  if (lastTemp !== undefined && Math.abs(entry.temperature - lastTemp) < 1) return;
-  entry._lastColorTemp = entry.temperature;
-
-  // Cache the product body mesh child to avoid traverse() every frame
-  if (!entry._bodyMesh) {
-    entry.mesh.traverse(function(child) {
-      if (child.isMesh && child.userData.isProductBody) {
-        entry._bodyMesh = child;
-      }
-    });
-  }
-  var body = entry._bodyMesh;
-  if (!body) return;
-
-  var color = getTemperatureColor(entry.temperature);
-  body.material.color.copy(color);
-
-  if (entry.temperature > 400) {
-    var emissiveIntensity = Math.min(0.5, (entry.temperature - 400) / 1800);
-    _emissiveColor.copy(color).multiplyScalar(0.6);
-    body.material.emissive.copy(_emissiveColor);
-    body.material.emissiveIntensity = emissiveIntensity;
-  } else {
-    body.material.emissive.copy(_blackColor);
-    body.material.emissiveIntensity = 0;
-  }
-}
-
-/**
- * Update mesh scale to reflect changed dimensions (after forging).
- * PERF: Uses cached _bodyMesh reference when available.
- */
-function updateMeshGeometry(entry) {
-  if (!entry.mesh) return;
-
-  var dims = entry.dimensions;
-
-  // Use cached body or find it
-  var body = entry._bodyMesh;
-  if (!body) {
-    entry.mesh.traverse(function(child) {
-      if (child.isMesh && child.userData.isProductBody) {
-        entry._bodyMesh = child;
-        body = child;
-      }
-    });
-  }
-  if (!body) return;
-
-  body.scale.set(
-    dims.width || 0.15,
-    dims.height || 0.15,
-    dims.length || 0.5
-  );
-  body.position.y = (dims.height || 0.15) / 2;
-}
-
-/**
- * Position the product mesh at a world location.
- * Called by mainlogic when a product's container (equipment, rack, vehicle) is known.
- *
- * @param {string} id - Product ID
- * @param {number} worldX - World X position
- * @param {number} worldY - World Y position (usually 0 or on equipment surface)
- * @param {number} worldZ - World Z position
- */
-export function setMeshPosition(id, worldX, worldY, worldZ) {
-  var entry = registry.get(id);
-  if (!entry || !entry.mesh) return;
-
-  entry.mesh.position.set(worldX, worldY, worldZ);
-  entry.mesh.visible = true;
-}
-
-/**
- * Hide the product mesh (when in transit or not yet placed).
- */
-export function hideMesh(id) {
-  var entry = registry.get(id);
-  if (!entry || !entry.mesh) return;
-  entry.mesh.visible = false;
-}
-
-/**
- * Show the product mesh.
- */
-export function showMesh(id) {
-  var entry = registry.get(id);
-  if (!entry || !entry.mesh) return;
-  entry.mesh.visible = true;
 }
