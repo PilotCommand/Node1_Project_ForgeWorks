@@ -1,13 +1,230 @@
-<!doctype html>
+<!DOCTYPE html>
 <html lang="en">
-  <head>
-    <meta charset="UTF-8" />
-    <link rel="icon" type="image/svg+xml" href="/vite.svg" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>forgeworks</title>
-  </head>
-  <body>
-    <div id="app"></div>
-    <script type="module" src="/src/main.js"></script>
-  </body>
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Forgeworks — Digital Forge Twin</title>
+  <style>
+    /* ===================================================================
+       Forgeworks Global Styles
+       Dark industrial theme. The HUD panels are built by visualhud.js
+       at runtime — this stylesheet handles the page-level layout and
+       the base styling that visualhud's dynamic CSS builds on.
+       =================================================================== */
+
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    body {
+      background: #0d0d0d;
+      color: #cccccc;
+      font-family: 'Segoe UI', 'Roboto', 'Helvetica Neue', Arial, sans-serif;
+      overflow: hidden;
+      width: 100vw;
+      height: 100vh;
+    }
+
+    /* The Three.js canvas mounts here. Takes the full viewport. */
+    #forge-container {
+      width: 100%;
+      height: 100%;
+      position: relative;
+    }
+
+    /* Canvas itself */
+    #forge-container canvas {
+      display: block;
+    }
+
+    /* Loading screen — shown while modules initialize */
+    #loading-screen {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background: #0d0d0d;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      z-index: 10000;
+      transition: opacity 0.5s ease;
+    }
+
+    #loading-screen.fade-out {
+      opacity: 0;
+      pointer-events: none;
+    }
+
+    #loading-screen h1 {
+      font-size: 2.4rem;
+      font-weight: 300;
+      letter-spacing: 0.3em;
+      color: #ff8800;
+      text-transform: uppercase;
+      margin-bottom: 0.5rem;
+    }
+
+    #loading-screen p {
+      font-size: 0.9rem;
+      color: #666666;
+      letter-spacing: 0.1em;
+    }
+
+    #loading-screen .spinner {
+      width: 40px;
+      height: 40px;
+      border: 3px solid #333333;
+      border-top-color: #ff8800;
+      border-radius: 50%;
+      animation: spin 0.8s linear infinite;
+      margin-top: 1.5rem;
+    }
+
+    @keyframes spin {
+      to { transform: rotate(360deg); }
+    }
+
+    /* Error overlay if initialization fails */
+    #error-screen {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background: rgba(13, 13, 13, 0.95);
+      display: none;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      z-index: 10001;
+    }
+
+    #error-screen.visible {
+      display: flex;
+    }
+
+    #error-screen h2 {
+      color: #cc3333;
+      font-size: 1.4rem;
+      margin-bottom: 1rem;
+    }
+
+    #error-screen pre {
+      background: #1a1a1a;
+      color: #ff6666;
+      padding: 1rem 1.5rem;
+      border-radius: 4px;
+      max-width: 80%;
+      overflow-x: auto;
+      font-size: 0.85rem;
+      line-height: 1.5;
+    }
+
+    #error-screen button {
+      margin-top: 1.5rem;
+      padding: 0.5rem 1.5rem;
+      background: #333333;
+      color: #cccccc;
+      border: 1px solid #555555;
+      border-radius: 3px;
+      cursor: pointer;
+      font-size: 0.9rem;
+    }
+
+    #error-screen button:hover {
+      background: #444444;
+    }
+  </style>
+</head>
+<body>
+  <!-- Loading screen -->
+  <div id="loading-screen">
+    <h1>Forgeworks</h1>
+    <p>Initializing forge environment...</p>
+    <div class="spinner"></div>
+  </div>
+
+  <!-- Error screen (hidden by default) -->
+  <div id="error-screen">
+    <h2>Initialization Failed</h2>
+    <pre id="error-message">Unknown error</pre>
+    <button onclick="location.reload()">Reload</button>
+  </div>
+
+  <!-- Three.js canvas container -->
+  <div id="forge-container"></div>
+
+  <!-- Application entry point -->
+  <script type="module">
+    import { init, submitOrder, setMode, getMode } from './infrastructure/mainlogic.js';
+
+    // Initialize the application
+    const container = document.getElementById('forge-container');
+    const loadingScreen = document.getElementById('loading-screen');
+    const errorScreen = document.getElementById('error-screen');
+    const errorMessage = document.getElementById('error-message');
+
+    try {
+      init(container, {
+        layout: 'coulter',
+        seed: 42,
+        displaySystem: 'si',
+      });
+
+      // Fade out loading screen
+      setTimeout(function() {
+        loadingScreen.classList.add('fade-out');
+        setTimeout(function() {
+          loadingScreen.style.display = 'none';
+        }, 500);
+      }, 300);
+
+      // Expose key functions to the browser console for testing
+      window.forgeworks = {
+        submitOrder: submitOrder,
+        setMode: setMode,
+        getMode: getMode,
+
+        // Quick test: submit a 5-piece order
+        testOrder: function() {
+          return submitOrder({
+            materialGrade: '4140',
+            quantity: 5,
+            weight: 45,
+            dimensions: { length: 0.5, width: 0.15, height: 0.15 },
+          });
+        },
+
+        // Quick test: submit a larger batch
+        testBatch: function() {
+          return submitOrder({
+            materialGrade: '4140',
+            quantity: 20,
+            weight: 45,
+            dimensions: { length: 0.5, width: 0.15, height: 0.15 },
+          });
+        },
+      };
+
+      console.log('%c FORGEWORKS ', 'background: #ff8800; color: #000; font-weight: bold; font-size: 14px; padding: 4px 8px;');
+      console.log('Digital forge twin initialized.');
+      console.log('Console commands:');
+      console.log('  forgeworks.testOrder()   — Submit a 5-piece test order');
+      console.log('  forgeworks.testBatch()   — Submit a 20-piece batch');
+      console.log('  forgeworks.setMode("prediction") — Switch to prediction mode');
+      console.log('  forgeworks.setMode("sandbox")    — Switch to sandbox mode');
+
+    } catch (err) {
+      console.error('Forgeworks initialization failed:', err);
+      loadingScreen.style.display = 'none';
+      errorScreen.classList.add('visible');
+      errorMessage.textContent = err.message + '\n\n' + (err.stack || '');
+    }
+  </script>
+</body>
 </html>

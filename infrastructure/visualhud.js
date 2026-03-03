@@ -10,7 +10,7 @@
 // ============================================================================
 
 import * as THREE from 'three';
-import { tick, getTime, getDelta, getSpeed, setSpeed, pause, resume, isPaused, formatTime } from './worldclock.js';
+import { tick, getTime, getDelta, getSpeed, setSpeed, pause, resume, getPaused, formatTime } from './worldclock.js';
 import { getDisplaySystem, setDisplaySystem } from './measurementunits.js';
 import { initControls, update as updateControls, resetView, flyTo } from './controls.js';
 
@@ -278,7 +278,7 @@ function buildHUD() {
   pauseBtn.textContent = '||';
   pauseBtn.title = 'Pause/Resume';
   pauseBtn.style.cssText = 'background:none;border:1px solid #555;color:#aaa;padding:2px 8px;border-radius:3px;cursor:pointer;font-family:monospace;';
-  pauseBtn.addEventListener('click', function() { if (isPaused()) resume(); else pause(); });
+  pauseBtn.addEventListener('click', function() { if (getPaused()) resume(); else pause(); });
   timeDiv.appendChild(pauseBtn);
 
   var speedBtns = [0.5, 1, 2, 5, 10];
@@ -504,7 +504,7 @@ export function getMode() { return currentMode; }
 
 function updateTimeDisplay() {
   if (timeDisplay) timeDisplay.textContent = formatTime(getTime());
-  if (speedDisplay) speedDisplay.textContent = (isPaused() ? 'PAUSED' : getSpeed().toFixed(1) + 'x');
+  if (speedDisplay) speedDisplay.textContent = (getPaused() ? 'PAUSED' : getSpeed().toFixed(1) + 'x');
 }
 
 /**
