@@ -768,13 +768,15 @@ export function buildFloorMesh() {
 
 /**
  * Build zone overlay meshes (colored floor tiles for each zone).
+ * PERF: Merges all tiles of each zone type into a single BufferGeometry.
+ * Result: ~12 draw calls instead of ~2900.
  * @returns {THREE.Group}
  */
 export function buildZoneOverlayMeshes() {
   var group = new THREE.Group();
   group.userData.visibilityCategory = 'zones';
 
-  // Collect cells by zone type to batch geometry
+  // Collect cells by zone type
   var zoneBuckets = {};
 
   for (var z = 0; z < gridDepth; z++) {
@@ -787,34 +789,49 @@ export function buildZoneOverlayMeshes() {
     }
   }
 
+  var half = cellSize * 0.475; // 0.95 / 2
+
   var zoneTypes = Object.keys(zoneBuckets);
   for (var i = 0; i < zoneTypes.length; i++) {
     var zoneType = zoneTypes[i];
     var cells = zoneBuckets[zoneType];
     var colorHex = ZONE_COLORS[zoneType];
-    var color = new THREE.Color(colorHex);
+
+    // Build merged geometry: 2 triangles per cell = 6 vertices = 18 floats
+    var vertCount = cells.length * 6;
+    var positions = new Float32Array(vertCount * 3);
+    var idx = 0;
 
     for (var c = 0; c < cells.length; c++) {
-      var cell = cells[c];
-      var tileGeo = new THREE.PlaneGeometry(cellSize * 0.95, cellSize * 0.95);
-      var tileMat = new THREE.MeshStandardMaterial({
-        color: color,
-        transparent: true,
-        opacity: 0.35,
-        roughness: 0.8,
-        side: THREE.DoubleSide,
-      });
+      var cx = cells[c].x * cellSize + cellSize / 2;
+      var cz = cells[c].z * cellSize + cellSize / 2;
 
-      var tile = new THREE.Mesh(tileGeo, tileMat);
-      tile.rotation.x = -Math.PI / 2;
-      tile.position.set(
-        cell.x * cellSize + cellSize / 2,
-        0.01,
-        cell.z * cellSize + cellSize / 2
-      );
-      tile.userData.visibilityCategory = 'zones';
-      group.add(tile);
+      // Quad as 2 triangles (CCW winding, facing up)
+      // Triangle 1: BL, TR, BR
+      positions[idx++] = cx - half; positions[idx++] = 0.01; positions[idx++] = cz + half;
+      positions[idx++] = cx + half; positions[idx++] = 0.01; positions[idx++] = cz - half;
+      positions[idx++] = cx + half; positions[idx++] = 0.01; positions[idx++] = cz + half;
+      // Triangle 2: BL, BR, TR  (note: BL, BR_bottom, TR)
+      positions[idx++] = cx - half; positions[idx++] = 0.01; positions[idx++] = cz + half;
+      positions[idx++] = cx - half; positions[idx++] = 0.01; positions[idx++] = cz - half;
+      positions[idx++] = cx + half; positions[idx++] = 0.01; positions[idx++] = cz - half;
     }
+
+    var geo = new THREE.BufferGeometry();
+    geo.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+    geo.computeVertexNormals();
+
+    var mat = new THREE.MeshStandardMaterial({
+      color: new THREE.Color(colorHex),
+      transparent: true,
+      opacity: 0.35,
+      roughness: 0.8,
+      side: THREE.DoubleSide,
+    });
+
+    var mesh = new THREE.Mesh(geo, mat);
+    mesh.userData.visibilityCategory = 'zones';
+    group.add(mesh);
   }
 
   zoneOverlayMeshes = [group];
@@ -823,37 +840,58 @@ export function buildZoneOverlayMeshes() {
 
 /**
  * Build wall meshes (extruded boxes from wall cells).
+ * PERF: Uses InstancedMesh — one geometry, one material, one draw call
+ * for all wall blocks instead of one per cell (~400 → 1).
  * @returns {THREE.Group}
  */
 export function buildWallMeshes() {
   var group = new THREE.Group();
   group.userData.visibilityCategory = 'walls';
 
+  // First pass: count wall cells
+  var wallCells = [];
   for (var z = 0; z < gridDepth; z++) {
     for (var x = 0; x < gridWidth; x++) {
       if (grid[z][x] === 'wall') {
-        var wallGeo = new THREE.BoxGeometry(cellSize, wallHeight, cellSize);
-        var wallMat = new THREE.MeshStandardMaterial({
-          color: 0x606060,
-          roughness: 0.7,
-          metalness: 0.2,
-        });
-
-        var wallBlock = new THREE.Mesh(wallGeo, wallMat);
-        wallBlock.position.set(
-          x * cellSize + cellSize / 2,
-          wallHeight / 2,
-          z * cellSize + cellSize / 2
-        );
-        wallBlock.castShadow = true;
-        wallBlock.receiveShadow = true;
-        wallBlock.userData.visibilityCategory = 'walls';
-        wallBlock.userData.gridX = x;
-        wallBlock.userData.gridZ = z;
-        group.add(wallBlock);
+        wallCells.push({ x: x, z: z });
       }
     }
   }
+
+  if (wallCells.length === 0) {
+    wallMeshes = [group];
+    return group;
+  }
+
+  // Create single geometry and material
+  var wallGeo = new THREE.BoxGeometry(cellSize, wallHeight, cellSize);
+  var wallMat = new THREE.MeshStandardMaterial({
+    color: 0x606060,
+    roughness: 0.7,
+    metalness: 0.2,
+  });
+
+  // Create InstancedMesh
+  var instancedWall = new THREE.InstancedMesh(wallGeo, wallMat, wallCells.length);
+  instancedWall.castShadow = true;
+  instancedWall.receiveShadow = true;
+  instancedWall.userData.visibilityCategory = 'walls';
+
+  // Set transform for each instance
+  var matrix = new THREE.Matrix4();
+  for (var i = 0; i < wallCells.length; i++) {
+    var cell = wallCells[i];
+    matrix.identity();
+    matrix.setPosition(
+      cell.x * cellSize + cellSize / 2,
+      wallHeight / 2,
+      cell.z * cellSize + cellSize / 2
+    );
+    instancedWall.setMatrixAt(i, matrix);
+  }
+  instancedWall.instanceMatrix.needsUpdate = true;
+
+  group.add(instancedWall);
 
   wallMeshes = [group];
   return group;
