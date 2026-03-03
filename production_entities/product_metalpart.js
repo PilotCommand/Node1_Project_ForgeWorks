@@ -43,17 +43,23 @@ const TEMP_STOPS = [
 
 /**
  * Get the RGB color for a given temperature by interpolating between stops.
+ * PERF: Reuses a single THREE.Color to avoid per-frame allocations.
  * @param {number} temp - Temperature in Celsius
+ * @param {THREE.Color} [target] - Optional Color to write into (avoids allocation)
  * @returns {THREE.Color}
  */
-export function getTemperatureColor(temp) {
+const _tempColor = new THREE.Color();
+
+export function getTemperatureColor(temp, target) {
+  var out = target || _tempColor;
+
   // Clamp to range
   if (temp <= TEMP_STOPS[0].temp) {
-    return new THREE.Color(TEMP_STOPS[0].r, TEMP_STOPS[0].g, TEMP_STOPS[0].b);
+    return out.setRGB(TEMP_STOPS[0].r, TEMP_STOPS[0].g, TEMP_STOPS[0].b);
   }
-  if (temp >= TEMP_STOPS[TEMP_STOPS.length - 1].temp) {
-    var last = TEMP_STOPS[TEMP_STOPS.length - 1];
-    return new THREE.Color(last.r, last.g, last.b);
+  var last = TEMP_STOPS[TEMP_STOPS.length - 1];
+  if (temp >= last.temp) {
+    return out.setRGB(last.r, last.g, last.b);
   }
 
   // Find the two stops we're between
@@ -62,7 +68,7 @@ export function getTemperatureColor(temp) {
     var hi = TEMP_STOPS[i + 1];
     if (temp >= lo.temp && temp <= hi.temp) {
       var t = (temp - lo.temp) / (hi.temp - lo.temp);
-      return new THREE.Color(
+      return out.setRGB(
         lo.r + (hi.r - lo.r) * t,
         lo.g + (hi.g - lo.g) * t,
         lo.b + (hi.b - lo.b) * t
@@ -70,7 +76,7 @@ export function getTemperatureColor(temp) {
     }
   }
 
-  return new THREE.Color(0.4, 0.4, 0.4);
+  return out.setRGB(0.4, 0.4, 0.4);
 }
 
 // ---------------------------------------------------------------------------
@@ -338,50 +344,73 @@ export function buildMetalPartMesh(dimensions, registryId) {
 
 /**
  * Update mesh color based on current temperature.
+ * PERF: Skips if temperature hasn't changed by more than 1°C since last update.
+ *       Caches the child mesh reference to avoid traverse() every frame.
+ *       Reuses Color objects to avoid per-frame allocations.
  */
+const _emissiveColor = new THREE.Color();
+const _blackColor = new THREE.Color(0, 0, 0);
+
 function updateMeshColor(entry) {
   if (!entry.mesh) return;
 
-  var color = getTemperatureColor(entry.temperature);
-  var emissiveIntensity = 0;
+  // Skip if temperature hasn't changed meaningfully
+  var lastTemp = entry._lastColorTemp;
+  if (lastTemp !== undefined && Math.abs(entry.temperature - lastTemp) < 1) return;
+  entry._lastColorTemp = entry.temperature;
 
-  // Products above ~400C start glowing
-  if (entry.temperature > 400) {
-    emissiveIntensity = Math.min(0.5, (entry.temperature - 400) / 1800);
-  }
-
-  entry.mesh.traverse(function(child) {
-    if (child.isMesh && child.userData.isProductBody) {
-      child.material.color.copy(color);
-      if (emissiveIntensity > 0) {
-        child.material.emissive = color.clone().multiplyScalar(0.6);
-        child.material.emissiveIntensity = emissiveIntensity;
-      } else {
-        child.material.emissive = new THREE.Color(0, 0, 0);
-        child.material.emissiveIntensity = 0;
+  // Cache the product body mesh child to avoid traverse() every frame
+  if (!entry._bodyMesh) {
+    entry.mesh.traverse(function(child) {
+      if (child.isMesh && child.userData.isProductBody) {
+        entry._bodyMesh = child;
       }
-    }
-  });
+    });
+  }
+  var body = entry._bodyMesh;
+  if (!body) return;
+
+  var color = getTemperatureColor(entry.temperature);
+  body.material.color.copy(color);
+
+  if (entry.temperature > 400) {
+    var emissiveIntensity = Math.min(0.5, (entry.temperature - 400) / 1800);
+    _emissiveColor.copy(color).multiplyScalar(0.6);
+    body.material.emissive.copy(_emissiveColor);
+    body.material.emissiveIntensity = emissiveIntensity;
+  } else {
+    body.material.emissive.copy(_blackColor);
+    body.material.emissiveIntensity = 0;
+  }
 }
 
 /**
  * Update mesh scale to reflect changed dimensions (after forging).
+ * PERF: Uses cached _bodyMesh reference when available.
  */
 function updateMeshGeometry(entry) {
   if (!entry.mesh) return;
 
   var dims = entry.dimensions;
 
-  entry.mesh.traverse(function(child) {
-    if (child.isMesh && child.userData.isProductBody) {
-      child.scale.set(
-        dims.width || 0.15,
-        dims.height || 0.15,
-        dims.length || 0.5
-      );
-      child.position.y = (dims.height || 0.15) / 2;
-    }
-  });
+  // Use cached body or find it
+  var body = entry._bodyMesh;
+  if (!body) {
+    entry.mesh.traverse(function(child) {
+      if (child.isMesh && child.userData.isProductBody) {
+        entry._bodyMesh = child;
+        body = child;
+      }
+    });
+  }
+  if (!body) return;
+
+  body.scale.set(
+    dims.width || 0.15,
+    dims.height || 0.15,
+    dims.length || 0.5
+  );
+  body.position.y = (dims.height || 0.15) / 2;
 }
 
 /**

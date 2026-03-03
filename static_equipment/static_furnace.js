@@ -39,6 +39,9 @@ const DEFAULT_SPECS = {
 // ---------------------------------------------------------------------------
 // Cold (25C) = dark grey, hot (1300C) = bright yellow-orange
 
+// PERF: Reuse a single Color object to avoid per-frame allocations
+const _furnaceTempColor = new THREE.Color();
+
 function getTemperatureColor(temp, maxTemp) {
   var t = Math.max(0, Math.min(1, (temp - 25) / (maxTemp - 25)));
 
@@ -61,7 +64,7 @@ function getTemperatureColor(temp, maxTemp) {
     b = s * 0.1;            // 0.0 -> 0.1
   }
 
-  return new THREE.Color(r, g, b);
+  return _furnaceTempColor.setRGB(r, g, b);
 }
 
 // ---------------------------------------------------------------------------
@@ -335,18 +338,34 @@ export function buildFurnaceMesh(specs, registryId) {
 
 /**
  * Update furnace mesh color based on current temperature.
+ * PERF: Caches body mesh, skips if temp hasn't changed by >2°C, reuses Color.
  */
+const _furnaceEmissive = new THREE.Color();
+
 function updateFurnaceMeshColor(entry) {
   if (!entry.mesh) return;
+
+  // Skip if temperature hasn't changed meaningfully
+  var lastTemp = entry._lastColorTemp;
+  if (lastTemp !== undefined && Math.abs(entry.specs.currentTemp - lastTemp) < 2) return;
+  entry._lastColorTemp = entry.specs.currentTemp;
+
+  // Cache the furnace body mesh child
+  if (!entry._bodyMesh) {
+    entry.mesh.traverse(function(child) {
+      if (child.isMesh && child.userData.isFurnaceBody) {
+        entry._bodyMesh = child;
+      }
+    });
+  }
+  var body = entry._bodyMesh;
+  if (!body) return;
 
   var color = getTemperatureColor(entry.specs.currentTemp, entry.specs.maxTemp);
   var emissiveIntensity = Math.max(0, (entry.specs.currentTemp - 100) / entry.specs.maxTemp) * 0.6;
 
-  entry.mesh.traverse(function(child) {
-    if (child.isMesh && child.userData.isFurnaceBody) {
-      child.material.color.copy(color);
-      child.material.emissive = color.clone().multiplyScalar(0.5);
-      child.material.emissiveIntensity = emissiveIntensity;
-    }
-  });
+  body.material.color.copy(color);
+  _furnaceEmissive.copy(color).multiplyScalar(0.5);
+  body.material.emissive.copy(_furnaceEmissive);
+  body.material.emissiveIntensity = emissiveIntensity;
 }

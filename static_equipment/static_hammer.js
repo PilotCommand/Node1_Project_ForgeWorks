@@ -225,9 +225,13 @@ function updateHammerTup(entry) {
     offset = Math.abs(Math.sin(specs.strikePhase)) * strokeDist;
   }
 
-  entry.mesh.traverse(function(child) {
-    if (child.userData && child.userData.isTup) {
-      child.position.y = baseY - offset;
-    }
-  });
+  // Cache tup mesh child to avoid traverse every frame
+  if (!entry._tupMesh) {
+    entry.mesh.traverse(function(child) {
+      if (child.userData && child.userData.isTup) {
+        entry._tupMesh = child;
+      }
+    });
+  }
+  if (entry._tupMesh) entry._tupMesh.position.y = baseY - offset;
 }

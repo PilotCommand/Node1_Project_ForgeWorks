@@ -5,6 +5,10 @@
 // Sets up Three.js renderer/scene/camera, manages all HUD panels, and
 // implements the visibility filter system (thermal vision theme).
 //
+// HUD panels are draggable, resizable, collapsible, with font-size controls.
+// Inspired by modular game HUD patterns — every panel can be repositioned,
+// collapsed, and resized by the user.
+//
 // Imports: worldclock.js, measurementunits.js
 // Exports: Renderer setup, scene access, HUD panels, visibility filter
 // ============================================================================
@@ -70,7 +74,7 @@ for (var cat in VISIBILITY_CATEGORIES) {
 }
 
 // Current mode
-let currentMode = 'sandbox'; // sandbox, prediction, operating
+let currentMode = 'sandbox';
 
 // Raycasting
 let raycaster = new THREE.Raycaster();
@@ -82,32 +86,90 @@ let onGridClickCallback = null;
 
 // HUD DOM references
 let hudContainer = null;
-let modeSelector = null;
-let timeDisplay = null;
-let speedDisplay = null;
+let controlsPanel = null;
 let filterPanel = null;
 let infoPanel = null;
 let productTrackerPanel = null;
 let alertBar = null;
-let statsPanel = null;
 let statusBar = null;
+let statsPanel = null;
+
+// HUD internal references
+let modeSelector = null;
+let timeDisplay = null;
+let speedDisplay = null;
 
 // Grid dimensions (set during init)
 let gridW = 60;
 let gridH = 80;
 
+// Track HUD initialization
+let hudInitialized = false;
+
+// ---------------------------------------------------------------------------
+// HUD Theme Colors
+// ---------------------------------------------------------------------------
+// Edit these to reskin the entire HUD. Every panel, button, border, and
+// text color pulls from this single object.
+//
+// Current palette: Navy / Cyan / Teal (matches sonar-style game HUD)
+// To switch to forge orange later, swap accent to '#ff8800' and change
+// the (0, 255, 200) values below to (255, 136, 0).
+//
+// TIP: The "accentRGB" value is used to build all the rgba() variants.
+// Change that one string and every transparent accent updates with it.
+// ---------------------------------------------------------------------------
+
+const ACCENT_RGB = '0, 255, 200';     // <-- CHANGE THIS ONE VALUE to re-theme
+
+const THEME = {
+  // --- Primary accent ---
+  accent:       '#00ffc8',                                 // Solid accent for text/titles
+  accentRGB:    ACCENT_RGB,                                // Raw RGB for rgba() building
+
+  // --- Accent at various opacities (auto-derived from ACCENT_RGB) ---
+  accentDim:    'rgba(' + ACCENT_RGB + ', 0.3)',
+  accentFaint:  'rgba(' + ACCENT_RGB + ', 0.15)',
+  accentGlow:   'rgba(' + ACCENT_RGB + ', 0.4)',
+
+  // --- Panel chrome ---
+  panelBg:      'rgba(0, 20, 40, 0.78)',                   // Dark navy, semi-transparent
+  panelBorder:  'rgba(' + ACCENT_RGB + ', 0.25)',
+  panelHover:   'rgba(' + ACCENT_RGB + ', 0.4)',            // Border on hover
+  titleBg:      'rgba(' + ACCENT_RGB + ', 0.12)',
+  titleBorder:  'rgba(' + ACCENT_RGB + ', 0.18)',
+
+  // --- Text ---
+  text:         '#c0e8e0',                                 // Light teal-white
+  textDim:      'rgba(' + ACCENT_RGB + ', 0.5)',            // Muted labels
+  textValue:    '#00ffc8',                                 // Data values
+
+  // --- Buttons ---
+  btnBorder:    'rgba(' + ACCENT_RGB + ', 0.2)',
+  btnHoverBg:   'rgba(' + ACCENT_RGB + ', 0.08)',
+  btnActiveBg:  'rgba(' + ACCENT_RGB + ', 0.15)',
+  btnActiveBrd: 'rgba(' + ACCENT_RGB + ', 0.5)',
+
+  // --- Scrollbars ---
+  scrollTrack:  'rgba(0, 0, 0, 0.25)',
+  scrollThumb:  'rgba(' + ACCENT_RGB + ', 0.3)',
+
+  // --- Inputs ---
+  inputBg:      'rgba(0, 0, 0, 0.35)',
+  inputBorder:  'rgba(' + ACCENT_RGB + ', 0.2)',
+
+  // --- Misc ---
+  divider:      'rgba(' + ACCENT_RGB + ', 0.15)',
+  rowBorder:    'rgba(' + ACCENT_RGB + ', 0.06)',           // Subtle row separators
+  danger:       '#ff4433',
+  success:      '#44cc66',
+  info:         '#66aaff',
+};
+
 // ---------------------------------------------------------------------------
 // Renderer Initialization
 // ---------------------------------------------------------------------------
 
-/**
- * Initialize the Three.js renderer, scene, camera, and lighting.
- * Also builds the HUD DOM structure.
- *
- * @param {HTMLElement} containerElement - DOM element to mount the canvas
- * @param {number} [gw=60] - Grid width for camera setup
- * @param {number} [gd=80] - Grid depth for camera setup
- */
 export function initRenderer(containerElement, gw, gd) {
   container = containerElement;
   gridW = gw || 60;
@@ -153,16 +215,15 @@ export function initRenderer(containerElement, gw, gd) {
   fillLight.position.set(-20, 30, -20);
   scene.add(fillLight);
 
-  // Hemisphere light for natural sky-ground gradient
   var hemiLight = new THREE.HemisphereLight(0xaabbcc, 0x444422, 0.6);
   scene.add(hemiLight);
 
   // Camera controls
   initControls(camera, renderer.domElement, gridW, gridH);
 
-  // FPS counter — lower left corner
+  // FPS counter
   statsPanel = new Stats();
-  statsPanel.showPanel(0); // 0 = FPS, 1 = MS, 2 = MB
+  statsPanel.showPanel(0);
   statsPanel.dom.style.position = 'absolute';
   statsPanel.dom.style.left = '8px';
   statsPanel.dom.style.bottom = '8px';
@@ -170,7 +231,9 @@ export function initRenderer(containerElement, gw, gd) {
   container.appendChild(statsPanel.dom);
 
   // HUD
+  createStyles();
   buildHUD();
+  hudInitialized = true;
 
   // Window resize
   window.addEventListener('resize', onWindowResize);
@@ -208,10 +271,6 @@ export function removeFromScene(object) {
 // Render Loop
 // ---------------------------------------------------------------------------
 
-/**
- * Start the animation/render loop.
- * @param {function} callback - Called each frame with delta time: callback(delta)
- */
 export function startRenderLoop(callback) {
   updateCallback = callback;
   if (animationFrameId) cancelAnimationFrame(animationFrameId);
@@ -259,134 +318,850 @@ export function stopRenderLoop() {
   }
 }
 
-// ---------------------------------------------------------------------------
-// HUD Construction
-// ---------------------------------------------------------------------------
+// ============================================================================
+// HUD STYLES — Injected CSS (adopted from modular game HUD pattern)
+// ============================================================================
+
+function createStyles() {
+  if (document.getElementById('forge-hud-styles')) return;
+
+  var style = document.createElement('style');
+  style.id = 'forge-hud-styles';
+  style.textContent = `
+
+    /* ================================================================
+       BASE PANEL — every HUD panel inherits this
+       ================================================================ */
+    .hud-panel {
+      position: absolute;
+      background: ${THEME.panelBg};
+      border: 1px solid ${THEME.panelBorder};
+      border-radius: 4px;
+      color: ${THEME.text};
+      font-family: 'Consolas', 'SF Mono', 'Fira Code', 'Monaco', monospace;
+      font-size: 12px;
+      backdrop-filter: blur(6px);
+      -webkit-backdrop-filter: blur(6px);
+      pointer-events: auto;
+      min-width: 100px;
+      min-height: 40px;
+      z-index: 10;
+      box-shadow: 0 2px 12px rgba(0, 0, 0, 0.4);
+    }
+
+    .hud-panel:hover {
+      border-color: ${THEME.panelHover};
+    }
+
+    /* ================================================================
+       TITLE BAR — draggable handle
+       ================================================================ */
+    .hud-title {
+      background: ${THEME.titleBg};
+      padding: 5px 8px;
+      font-size: 10px;
+      text-transform: uppercase;
+      letter-spacing: 1.5px;
+      border-bottom: 1px solid ${THEME.titleBorder};
+      cursor: move;
+      user-select: none;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      color: ${THEME.accent};
+      font-weight: 600;
+    }
+
+    .hud-title-controls {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .hud-title-controls .font-btn {
+      opacity: 0.45;
+      font-size: 13px;
+      font-weight: bold;
+      cursor: pointer;
+      transition: opacity 0.2s;
+      line-height: 1;
+      padding: 0 2px;
+      user-select: none;
+    }
+
+    .hud-title-controls .font-btn:hover {
+      opacity: 1;
+    }
+
+    .hud-title-controls .grip {
+      opacity: 0.3;
+      font-size: 10px;
+      letter-spacing: 2px;
+    }
+
+    .hud-title-controls .collapse-btn {
+      opacity: 0.45;
+      font-size: 8px;
+      cursor: pointer;
+      transition: opacity 0.2s, transform 0.25s;
+      line-height: 1;
+    }
+
+    .hud-title-controls .collapse-btn:hover {
+      opacity: 1;
+    }
+
+    .hud-panel.collapsed .collapse-btn {
+      transform: rotate(180deg);
+    }
+
+    /* ================================================================
+       COLLAPSIBLE CONTENT
+       ================================================================ */
+    .hud-collapsible {
+      overflow: hidden;
+      transition: max-height 0.3s ease, opacity 0.2s ease;
+      max-height: 600px;
+      opacity: 1;
+    }
+
+    .hud-panel.collapsed .hud-collapsible {
+      max-height: 0;
+      opacity: 0;
+    }
+
+    .hud-panel.collapsed {
+      min-height: auto !important;
+    }
+
+    .hud-panel.collapsed .resize-handle {
+      display: none;
+    }
+
+    /* ================================================================
+       RESIZE HANDLE — bottom-right default
+       ================================================================ */
+    .resize-handle {
+      position: absolute;
+      width: 12px;
+      height: 12px;
+      bottom: 0;
+      right: 0;
+      cursor: nwse-resize;
+      opacity: 0.3;
+      transition: opacity 0.2s;
+    }
+
+    .resize-handle::before {
+      content: '';
+      position: absolute;
+      right: 2px;
+      bottom: 2px;
+      width: 8px;
+      height: 8px;
+      border-right: 2px solid ${THEME.accent};
+      border-bottom: 2px solid ${THEME.accent};
+    }
+
+    .hud-panel:hover .resize-handle {
+      opacity: 0.7;
+    }
+
+    /* Info panel — resize handle bottom-left (inner corner) */
+    #info-panel .resize-handle {
+      right: auto;
+      left: 0;
+      cursor: nesw-resize;
+    }
+
+    #info-panel .resize-handle::before {
+      right: auto;
+      left: 2px;
+      border-right: none;
+      border-left: 2px solid ${THEME.accent};
+    }
+
+    /* ================================================================
+       DRAG / RESIZE STATES
+       ================================================================ */
+    .hud-panel.dragging {
+      opacity: 0.75;
+      z-index: 1000;
+    }
+
+    .hud-panel.resizing {
+      opacity: 0.9;
+    }
+
+    /* ================================================================
+       CONTROLS PANEL (Mode + Time)
+       ================================================================ */
+    #controls-panel {
+      top: 8px;
+      left: 50%;
+      transform: translateX(-50%);
+    }
+
+    #controls-panel .controls-content {
+      padding: 6px 8px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+
+    .ctrl-group {
+      display: flex;
+      align-items: center;
+      gap: 3px;
+    }
+
+    .ctrl-group .ctrl-divider {
+      width: 1px;
+      height: 18px;
+      background: ${THEME.divider};
+      margin: 0 4px;
+    }
+
+    .ctrl-btn {
+      background: none;
+      border: 1px solid ${THEME.btnBorder};
+      color: ${THEME.textDim};
+      padding: 3px 8px;
+      border-radius: 3px;
+      cursor: pointer;
+      font-family: inherit;
+      font-size: 11px;
+      transition: all 0.15s;
+      white-space: nowrap;
+    }
+
+    .ctrl-btn:hover {
+      border-color: ${THEME.accent};
+      color: ${THEME.accent};
+      background: ${THEME.btnHoverBg};
+    }
+
+    .ctrl-btn.active {
+      background: ${THEME.btnActiveBg};
+      color: ${THEME.accent};
+      border-color: ${THEME.btnActiveBrd};
+    }
+
+    .ctrl-time {
+      color: ${THEME.accent};
+      min-width: 70px;
+      text-align: center;
+      font-size: 12px;
+      font-weight: bold;
+      letter-spacing: 0.5px;
+    }
+
+    .ctrl-speed {
+      color: ${THEME.textDim};
+      font-size: 10px;
+      min-width: 40px;
+      text-align: center;
+    }
+
+    /* ================================================================
+       VISIBILITY FILTER PANEL
+       ================================================================ */
+    #filter-panel {
+      top: 8px;
+      right: 8px;
+      width: 190px;
+    }
+
+    #filter-panel .filter-content {
+      padding: 6px 8px;
+    }
+
+    .filter-quick {
+      display: flex;
+      gap: 3px;
+      margin-bottom: 6px;
+      flex-wrap: wrap;
+    }
+
+    .filter-quick .ctrl-btn {
+      font-size: 9px;
+      padding: 2px 6px;
+    }
+
+    .filter-row {
+      display: flex;
+      align-items: center;
+      gap: 5px;
+      margin: 2px 0;
+      cursor: pointer;
+      font-size: 11px;
+      padding: 1px 0;
+      transition: color 0.15s;
+    }
+
+    .filter-row:hover {
+      color: ${THEME.accent};
+    }
+
+    .filter-row input[type="checkbox"] {
+      margin: 0;
+      cursor: pointer;
+      accent-color: ${THEME.accent};
+    }
+
+    .filter-dot {
+      display: inline-block;
+      width: 7px;
+      height: 7px;
+      border-radius: 50%;
+      flex-shrink: 0;
+    }
+
+    .filter-label {
+      color: ${THEME.textDim};
+    }
+
+    .filter-row:hover .filter-label {
+      color: ${THEME.text};
+    }
+
+    /* ================================================================
+       INFO PANEL (Object Inspector)
+       ================================================================ */
+    #info-panel {
+      bottom: 40px;
+      right: 8px;
+      width: 280px;
+      max-height: 340px;
+      display: none;
+    }
+
+    #info-panel .info-content {
+      padding: 8px;
+      overflow-y: auto;
+      max-height: 280px;
+    }
+
+    #info-panel .info-content::-webkit-scrollbar {
+      width: 4px;
+    }
+
+    #info-panel .info-content::-webkit-scrollbar-track {
+      background: ${THEME.scrollTrack};
+    }
+
+    #info-panel .info-content::-webkit-scrollbar-thumb {
+      background: ${THEME.scrollThumb};
+      border-radius: 2px;
+    }
+
+    .info-title-text {
+      color: ${THEME.accent};
+      font-weight: bold;
+      font-size: 13px;
+      margin-bottom: 6px;
+    }
+
+    .info-row {
+      display: flex;
+      justify-content: space-between;
+      padding: 2px 0;
+      font-size: 11px;
+      border-bottom: 1px solid ${THEME.rowBorder};
+    }
+
+    .info-key {
+      color: ${THEME.textDim};
+    }
+
+    .info-val {
+      color: ${THEME.text};
+      max-width: 160px;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      text-align: right;
+    }
+
+    /* ================================================================
+       PRODUCT TRACKER PANEL
+       ================================================================ */
+    #product-tracker-panel {
+      bottom: 40px;
+      left: 8px;
+      width: 400px;
+      max-height: 220px;
+      display: none;
+    }
+
+    #product-tracker-panel .tracker-content {
+      padding: 6px 8px;
+      overflow-y: auto;
+      max-height: 170px;
+    }
+
+    #product-tracker-panel .tracker-content::-webkit-scrollbar {
+      width: 4px;
+    }
+
+    #product-tracker-panel .tracker-content::-webkit-scrollbar-track {
+      background: ${THEME.scrollTrack};
+    }
+
+    #product-tracker-panel .tracker-content::-webkit-scrollbar-thumb {
+      background: ${THEME.scrollThumb};
+      border-radius: 2px;
+    }
+
+    .tracker-grid {
+      display: grid;
+      grid-template-columns: auto 1fr auto auto;
+      gap: 2px 8px;
+      font-size: 11px;
+    }
+
+    .tracker-id {
+      color: ${THEME.textDim};
+      cursor: pointer;
+      transition: color 0.15s;
+    }
+
+    .tracker-id:hover {
+      color: ${THEME.accent};
+    }
+
+    .tracker-state {
+      color: ${THEME.text};
+    }
+
+    .tracker-state-dot {
+      display: inline-block;
+      width: 6px;
+      height: 6px;
+      border-radius: 50%;
+      margin-right: 4px;
+      vertical-align: middle;
+    }
+
+    .tracker-temp {
+      font-variant-numeric: tabular-nums;
+    }
+
+    .tracker-loc {
+      color: rgba(232, 213, 192, 0.35);
+    }
+
+    /* ================================================================
+       ALERT BAR
+       ================================================================ */
+    #forge-alert-bar {
+      position: absolute;
+      top: 60px;
+      left: 50%;
+      transform: translateX(-50%);
+      background: rgba(180, 50, 30, 0.92);
+      color: #fff;
+      padding: 6px 18px;
+      border-radius: 4px;
+      display: none;
+      pointer-events: auto;
+      font-size: 12px;
+      font-family: 'Consolas', monospace;
+      border: 1px solid rgba(255, 80, 50, 0.5);
+      box-shadow: 0 2px 16px rgba(180, 50, 30, 0.4);
+      z-index: 100;
+    }
+
+    /* ================================================================
+       STATUS BAR
+       ================================================================ */
+    #forge-status-bar {
+      position: absolute;
+      bottom: 0;
+      right: 0;
+      height: 28px;
+      background: rgba(10, 8, 6, 0.92);
+      border-top: 1px solid ${THEME.panelBorder};
+      border-left: 1px solid ${THEME.panelBorder};
+      display: flex;
+      align-items: center;
+      padding: 0 12px;
+      gap: 16px;
+      font-size: 10px;
+      font-family: 'Consolas', monospace;
+      color: ${THEME.textDim};
+      pointer-events: auto;
+      border-radius: 4px 0 0 0;
+      letter-spacing: 0.3px;
+    }
+
+  `;
+  document.head.appendChild(style);
+}
+
+// ============================================================================
+// DRAG & RESIZE FUNCTIONALITY (adopted from modular game HUD)
+// ============================================================================
+
+function makeDraggable(panel) {
+  var titleBar = panel.querySelector('.hud-title');
+  if (!titleBar) return;
+
+  var isDragging = false;
+  var startX, startY, startLeft, startTop;
+
+  titleBar.addEventListener('mousedown', function(e) {
+    // Don't drag if clicking on a button/input inside the title
+    if (e.target.tagName === 'INPUT' || e.target.tagName === 'BUTTON' ||
+        e.target.classList.contains('font-btn') ||
+        e.target.classList.contains('collapse-btn')) return;
+
+    isDragging = true;
+    panel.classList.add('dragging');
+
+    var rect = panel.getBoundingClientRect();
+    startX = e.clientX;
+    startY = e.clientY;
+    startLeft = rect.left;
+    startTop = rect.top;
+
+    // Switch to absolute left/top positioning
+    panel.style.right = 'auto';
+    panel.style.bottom = 'auto';
+    panel.style.transform = 'none';
+    panel.style.left = startLeft + 'px';
+    panel.style.top = startTop + 'px';
+
+    e.preventDefault();
+  });
+
+  document.addEventListener('mousemove', function(e) {
+    if (!isDragging) return;
+
+    var dx = e.clientX - startX;
+    var dy = e.clientY - startY;
+
+    var newLeft = startLeft + dx;
+    var newTop = startTop + dy;
+
+    // Constrain to viewport
+    newLeft = Math.max(0, Math.min(newLeft, window.innerWidth - panel.offsetWidth));
+    newTop = Math.max(0, Math.min(newTop, window.innerHeight - panel.offsetHeight));
+
+    panel.style.left = newLeft + 'px';
+    panel.style.top = newTop + 'px';
+  });
+
+  document.addEventListener('mouseup', function() {
+    if (isDragging) {
+      isDragging = false;
+      panel.classList.remove('dragging');
+    }
+  });
+}
+
+function makeResizable(panel, onResize, corner) {
+  corner = corner || 'bottom-right';
+
+  var handle = document.createElement('div');
+  handle.className = 'resize-handle';
+  panel.appendChild(handle);
+
+  var isResizing = false;
+  var startX, startY, startWidth, startHeight;
+
+  handle.addEventListener('mousedown', function(e) {
+    isResizing = true;
+    panel.classList.add('resizing');
+
+    var rect = panel.getBoundingClientRect();
+    startX = e.clientX;
+    startY = e.clientY;
+    startWidth = rect.width;
+    startHeight = rect.height;
+
+    // Anchor the opposite corner
+    if (corner === 'bottom-left') {
+      panel.style.left = 'auto';
+      panel.style.bottom = 'auto';
+      panel.style.right = (window.innerWidth - rect.right) + 'px';
+      panel.style.top = rect.top + 'px';
+    } else if (corner === 'top-left') {
+      panel.style.left = 'auto';
+      panel.style.top = 'auto';
+      panel.style.right = (window.innerWidth - rect.right) + 'px';
+      panel.style.bottom = (window.innerHeight - rect.bottom) + 'px';
+    } else {
+      panel.style.right = 'auto';
+      panel.style.bottom = 'auto';
+      panel.style.transform = 'none';
+      panel.style.left = rect.left + 'px';
+      panel.style.top = rect.top + 'px';
+    }
+
+    panel.style.width = startWidth + 'px';
+    panel.style.height = startHeight + 'px';
+
+    e.preventDefault();
+    e.stopPropagation();
+  });
+
+  document.addEventListener('mousemove', function(e) {
+    if (!isResizing) return;
+
+    var dx = e.clientX - startX;
+    var dy = e.clientY - startY;
+
+    var newWidth, newHeight;
+
+    if (corner === 'bottom-left') {
+      newWidth = Math.max(100, startWidth - dx);
+      newHeight = Math.max(40, startHeight + dy);
+    } else if (corner === 'top-left') {
+      newWidth = Math.max(100, startWidth - dx);
+      newHeight = Math.max(40, startHeight - dy);
+    } else {
+      newWidth = Math.max(100, startWidth + dx);
+      newHeight = Math.max(40, startHeight + dy);
+    }
+
+    panel.style.width = newWidth + 'px';
+    panel.style.height = newHeight + 'px';
+
+    if (onResize) onResize(newWidth, newHeight);
+  });
+
+  document.addEventListener('mouseup', function() {
+    if (isResizing) {
+      isResizing = false;
+      panel.classList.remove('resizing');
+    }
+  });
+}
+
+function makeCollapsible(panel) {
+  var collapseBtn = panel.querySelector('.collapse-btn');
+  if (!collapseBtn) return;
+
+  collapseBtn.addEventListener('click', function(e) {
+    e.stopPropagation();
+    panel.classList.toggle('collapsed');
+  });
+}
+
+function makeFontResizable(panel) {
+  var decreaseBtn = panel.querySelector('.font-decrease');
+  var increaseBtn = panel.querySelector('.font-increase');
+  if (!decreaseBtn || !increaseBtn) return;
+
+  var content = panel.querySelector('.hud-collapsible') || panel;
+  var currentSize = 12;
+  var minSize = 8;
+  var maxSize = 18;
+
+  decreaseBtn.addEventListener('click', function(e) {
+    e.stopPropagation();
+    if (currentSize > minSize) {
+      currentSize -= 1;
+      content.style.fontSize = currentSize + 'px';
+    }
+  });
+
+  increaseBtn.addEventListener('click', function(e) {
+    e.stopPropagation();
+    if (currentSize < maxSize) {
+      currentSize += 1;
+      content.style.fontSize = currentSize + 'px';
+    }
+  });
+}
+
+/**
+ * Helper to build the standard title bar HTML used by all panels.
+ */
+function titleBarHTML(label) {
+  return '<span>' + label + '</span>' +
+    '<span class="hud-title-controls">' +
+      '<span class="font-btn font-decrease">−</span>' +
+      '<span class="font-btn font-increase">+</span>' +
+      '<span class="collapse-btn">▾</span>' +
+      '<span class="grip">⋮⋮</span>' +
+    '</span>';
+}
+
+// ============================================================================
+// HUD CONSTRUCTION
+// ============================================================================
 
 function buildHUD() {
   hudContainer = document.createElement('div');
   hudContainer.id = 'forgeworks-hud';
-  hudContainer.style.cssText = 'position:absolute;top:0;left:0;width:100%;height:100%;pointer-events:none;font-family:monospace;color:#ccc;font-size:13px;';
+  hudContainer.style.cssText = 'position:absolute;top:0;left:0;width:100%;height:100%;pointer-events:none;';
   container.appendChild(hudContainer);
 
-  // --- Top Bar: Mode Selector + Time Controls ---
-  var topBar = document.createElement('div');
-  topBar.style.cssText = 'position:absolute;top:8px;left:8px;right:8px;display:flex;justify-content:space-between;align-items:center;pointer-events:auto;';
-  hudContainer.appendChild(topBar);
+  buildControlsPanel();
+  buildFilterPanel();
+  buildInfoPanel();
+  buildProductTrackerPanel();
+  buildAlertBar();
+  buildStatusBar();
+}
 
-  // Mode selector
-  var modeDiv = document.createElement('div');
-  modeDiv.style.cssText = 'display:flex;gap:4px;background:rgba(20,20,30,0.85);padding:4px 8px;border-radius:4px;border:1px solid #333;';
+// ---------------------------------------------------------------------------
+// Controls Panel (Mode + Time + Camera) — Top Center, Draggable
+// ---------------------------------------------------------------------------
+
+function buildControlsPanel() {
+  controlsPanel = document.createElement('div');
+  controlsPanel.id = 'controls-panel';
+  controlsPanel.className = 'hud-panel';
+
+  // Title bar
+  var title = document.createElement('div');
+  title.className = 'hud-title';
+  title.innerHTML = titleBarHTML('Controls');
+  controlsPanel.appendChild(title);
+
+  // Collapsible content
+  var collapsible = document.createElement('div');
+  collapsible.className = 'hud-collapsible';
+
+  var content = document.createElement('div');
+  content.className = 'controls-content';
+
+  // --- Mode buttons ---
+  var modeGroup = document.createElement('div');
+  modeGroup.className = 'ctrl-group';
+
   var modes = ['sandbox', 'prediction', 'operating'];
   for (var m = 0; m < modes.length; m++) {
     var btn = document.createElement('button');
     btn.textContent = modes[m].charAt(0).toUpperCase() + modes[m].slice(1);
     btn.dataset.mode = modes[m];
-    btn.style.cssText = 'background:none;border:1px solid #555;color:#aaa;padding:4px 10px;border-radius:3px;cursor:pointer;font-family:monospace;font-size:12px;';
+    btn.className = 'ctrl-btn' + (modes[m] === currentMode ? ' active' : '');
     btn.addEventListener('click', function(e) { setMode(e.target.dataset.mode); });
-    modeDiv.appendChild(btn);
+    modeGroup.appendChild(btn);
   }
-  modeSelector = modeDiv;
-  topBar.appendChild(modeDiv);
+  modeSelector = modeGroup;
+  content.appendChild(modeGroup);
 
-  // Time controls
-  var timeDiv = document.createElement('div');
-  timeDiv.style.cssText = 'display:flex;align-items:center;gap:6px;background:rgba(20,20,30,0.85);padding:4px 8px;border-radius:4px;border:1px solid #333;';
+  // Divider
+  var div1 = document.createElement('div');
+  div1.className = 'ctrl-divider';
+  div1.style.cssText = 'width:1px;height:18px;background:' + THEME.divider + ';margin:0 2px;';
+  content.appendChild(div1);
+
+  // --- Time controls ---
+  var timeGroup = document.createElement('div');
+  timeGroup.className = 'ctrl-group';
 
   var pauseBtn = document.createElement('button');
-  pauseBtn.textContent = '||';
-  pauseBtn.title = 'Pause/Resume';
-  pauseBtn.style.cssText = 'background:none;border:1px solid #555;color:#aaa;padding:2px 8px;border-radius:3px;cursor:pointer;font-family:monospace;';
-  pauseBtn.addEventListener('click', function() { if (getPaused()) resume(); else pause(); });
-  timeDiv.appendChild(pauseBtn);
+  pauseBtn.textContent = '⏸';
+  pauseBtn.title = 'Pause / Resume';
+  pauseBtn.className = 'ctrl-btn';
+  pauseBtn.addEventListener('click', function() {
+    if (getPaused()) resume(); else pause();
+  });
+  timeGroup.appendChild(pauseBtn);
 
   var speedBtns = [0.5, 1, 2, 5, 10];
   for (var s = 0; s < speedBtns.length; s++) {
     var sBtn = document.createElement('button');
     sBtn.textContent = speedBtns[s] + 'x';
     sBtn.dataset.speed = speedBtns[s];
-    sBtn.style.cssText = 'background:none;border:1px solid #444;color:#888;padding:2px 6px;border-radius:3px;cursor:pointer;font-family:monospace;font-size:11px;';
+    sBtn.className = 'ctrl-btn';
+    sBtn.style.fontSize = '10px';
+    sBtn.style.padding = '3px 5px';
     sBtn.addEventListener('click', function(e) { setSpeed(parseFloat(e.target.dataset.speed)); });
-    timeDiv.appendChild(sBtn);
+    timeGroup.appendChild(sBtn);
   }
+  content.appendChild(timeGroup);
 
+  // Time readout
   timeDisplay = document.createElement('span');
-  timeDisplay.style.cssText = 'color:#66ccff;min-width:80px;text-align:right;';
+  timeDisplay.className = 'ctrl-time';
   timeDisplay.textContent = '00:00:00';
-  timeDiv.appendChild(timeDisplay);
+  content.appendChild(timeDisplay);
 
   speedDisplay = document.createElement('span');
-  speedDisplay.style.cssText = 'color:#888;font-size:11px;';
+  speedDisplay.className = 'ctrl-speed';
   speedDisplay.textContent = '1.0x';
-  timeDiv.appendChild(speedDisplay);
+  content.appendChild(speedDisplay);
 
+  // Divider
+  var div2 = document.createElement('div');
+  div2.style.cssText = 'width:1px;height:18px;background:' + THEME.divider + ';margin:0 2px;';
+  content.appendChild(div2);
+
+  // Reset View button
   var resetBtn = document.createElement('button');
-  resetBtn.textContent = 'Reset View';
-  resetBtn.style.cssText = 'background:none;border:1px solid #555;color:#aaa;padding:2px 8px;border-radius:3px;cursor:pointer;font-family:monospace;font-size:11px;margin-left:8px;';
+  resetBtn.textContent = '⟳ View';
+  resetBtn.title = 'Reset Camera';
+  resetBtn.className = 'ctrl-btn';
   resetBtn.addEventListener('click', function() { resetView(); });
-  timeDiv.appendChild(resetBtn);
+  content.appendChild(resetBtn);
 
-  topBar.appendChild(timeDiv);
+  collapsible.appendChild(content);
+  controlsPanel.appendChild(collapsible);
+  hudContainer.appendChild(controlsPanel);
 
-  // --- Right Panel: Visibility Filter ---
-  buildFilterPanel();
-
-  // --- Bottom-Left: Info Panel ---
-  infoPanel = document.createElement('div');
-  infoPanel.style.cssText = 'position:absolute;bottom:40px;right:8px;width:280px;max-height:300px;overflow-y:auto;background:rgba(20,20,30,0.9);border:1px solid #333;border-radius:4px;padding:8px;display:none;pointer-events:auto;';
-  hudContainer.appendChild(infoPanel);
-
-  // --- Bottom-Center: Product Tracker ---
-  productTrackerPanel = document.createElement('div');
-  productTrackerPanel.style.cssText = 'position:absolute;bottom:40px;right:300px;left:240px;max-height:200px;overflow-y:auto;background:rgba(20,20,30,0.9);border:1px solid #333;border-radius:4px;padding:8px;display:none;pointer-events:auto;';
-  hudContainer.appendChild(productTrackerPanel);
-
-  // --- Alert Bar ---
-  alertBar = document.createElement('div');
-  alertBar.style.cssText = 'position:absolute;top:50px;left:50%;transform:translateX(-50%);background:rgba(180,50,30,0.9);color:#fff;padding:6px 16px;border-radius:4px;display:none;pointer-events:auto;font-size:12px;';
-  hudContainer.appendChild(alertBar);
-
-  // --- Status Bar ---
-  statusBar = document.createElement('div');
-  statusBar.style.cssText = 'position:absolute;bottom:0;right:0;height:30px;background:rgba(15,15,20,0.95);border-top:1px solid #333;border-left:1px solid #333;display:flex;align-items:center;padding:0 12px;gap:20px;font-size:11px;color:#777;pointer-events:auto;border-radius:4px 0 0 0;';
-  hudContainer.appendChild(statusBar);
+  // Apply behaviors
+  makeDraggable(controlsPanel);
+  makeCollapsible(controlsPanel);
+  makeFontResizable(controlsPanel);
 }
 
 // ---------------------------------------------------------------------------
-// Visibility Filter Panel
+// Visibility Filter Panel — Top Right, Draggable/Collapsible/Resizable
 // ---------------------------------------------------------------------------
 
 function buildFilterPanel() {
   filterPanel = document.createElement('div');
-  filterPanel.style.cssText = 'position:absolute;top:50px;right:8px;width:180px;background:rgba(20,20,30,0.9);border:1px solid #333;border-radius:4px;padding:8px;pointer-events:auto;';
-  hudContainer.appendChild(filterPanel);
+  filterPanel.id = 'filter-panel';
+  filterPanel.className = 'hud-panel';
 
+  // Title bar
   var title = document.createElement('div');
-  title.textContent = 'Visibility';
-  title.style.cssText = 'color:#88aacc;font-size:12px;font-weight:bold;margin-bottom:6px;border-bottom:1px solid #333;padding-bottom:4px;';
+  title.className = 'hud-title';
+  title.innerHTML = titleBarHTML('Visibility');
   filterPanel.appendChild(title);
+
+  // Collapsible content
+  var collapsible = document.createElement('div');
+  collapsible.className = 'hud-collapsible';
+
+  var content = document.createElement('div');
+  content.className = 'filter-content';
 
   // Quick controls
   var quickDiv = document.createElement('div');
-  quickDiv.style.cssText = 'display:flex;gap:4px;margin-bottom:6px;flex-wrap:wrap;';
+  quickDiv.className = 'filter-quick';
 
   var quickBtns = [
     { label: 'All', action: function() { setAllVisible(true); } },
     { label: 'None', action: function() { setAllVisible(false); } },
     { label: 'Products', action: function() { setAllVisible(false); setVisibilityFilter('products', true); setVisibilityFilter('zones', true); } },
-    { label: 'Equip', action: function() { setAllVisible(false); var eqCats = ['furnaces','presses','hammers','quenchTanks','racks']; for (var i=0;i<eqCats.length;i++) setVisibilityFilter(eqCats[i], true); setVisibilityFilter('zones', true); } },
+    { label: 'Equip', action: function() {
+      setAllVisible(false);
+      var eqCats = ['furnaces','presses','hammers','quenchTanks','racks'];
+      for (var i = 0; i < eqCats.length; i++) setVisibilityFilter(eqCats[i], true);
+      setVisibilityFilter('zones', true);
+    }},
   ];
 
   for (var q = 0; q < quickBtns.length; q++) {
     var qBtn = document.createElement('button');
     qBtn.textContent = quickBtns[q].label;
-    qBtn.style.cssText = 'background:none;border:1px solid #444;color:#888;padding:1px 6px;border-radius:2px;cursor:pointer;font-family:monospace;font-size:10px;';
+    qBtn.className = 'ctrl-btn';
+    qBtn.style.fontSize = '9px';
+    qBtn.style.padding = '2px 6px';
     qBtn.addEventListener('click', quickBtns[q].action);
     quickDiv.appendChild(qBtn);
   }
-  filterPanel.appendChild(quickDiv);
+  content.appendChild(quickDiv);
 
-  // Category checkboxes
+  // Category colors
   var categoryColors = {
     furnaces: '#ff6600', presses: '#999999', hammers: '#cc9933',
     quenchTanks: '#3366cc', racks: '#669933', forklifts: '#cccc33',
@@ -395,44 +1170,140 @@ function buildFilterPanel() {
     pathways: '#cccccc', utilities: '#ffff00',
   };
 
+  // Category checkboxes
   var cats = Object.keys(VISIBILITY_CATEGORIES);
   for (var c = 0; c < cats.length; c++) {
     var catKey = cats[c];
     var catDef = VISIBILITY_CATEGORIES[catKey];
 
     var row = document.createElement('label');
-    row.style.cssText = 'display:flex;align-items:center;gap:4px;margin:2px 0;cursor:pointer;font-size:11px;';
+    row.className = 'filter-row';
 
     var cb = document.createElement('input');
     cb.type = 'checkbox';
     cb.checked = true;
     cb.dataset.category = catKey;
-    cb.style.cssText = 'margin:0;cursor:pointer;';
     cb.addEventListener('change', function(e) {
       setVisibilityFilter(e.target.dataset.category, e.target.checked);
     });
     row.appendChild(cb);
 
     var dot = document.createElement('span');
-    dot.style.cssText = 'display:inline-block;width:8px;height:8px;border-radius:50%;background:' + (categoryColors[catKey] || '#888') + ';';
+    dot.className = 'filter-dot';
+    dot.style.background = categoryColors[catKey] || '#888';
     row.appendChild(dot);
 
     var lbl = document.createElement('span');
+    lbl.className = 'filter-label';
     lbl.textContent = catDef.label;
-    lbl.style.color = '#aaa';
     row.appendChild(lbl);
 
-    filterPanel.appendChild(row);
+    content.appendChild(row);
   }
+
+  collapsible.appendChild(content);
+  filterPanel.appendChild(collapsible);
+  hudContainer.appendChild(filterPanel);
+
+  // Apply behaviors
+  makeDraggable(filterPanel);
+  makeResizable(filterPanel, null, 'bottom-left');
+  makeCollapsible(filterPanel);
+  makeFontResizable(filterPanel);
 }
 
 // ---------------------------------------------------------------------------
-// Visibility Filter Logic
+// Info Panel (Object Inspector) — Bottom Right, Draggable/Collapsible
 // ---------------------------------------------------------------------------
 
-/**
- * Toggle visibility of a category. Swaps materials on all meshes in that category.
- */
+function buildInfoPanel() {
+  infoPanel = document.createElement('div');
+  infoPanel.id = 'info-panel';
+  infoPanel.className = 'hud-panel';
+
+  // Title bar
+  var title = document.createElement('div');
+  title.className = 'hud-title';
+  title.innerHTML = titleBarHTML('Inspector');
+  infoPanel.appendChild(title);
+
+  // Collapsible content
+  var collapsible = document.createElement('div');
+  collapsible.className = 'hud-collapsible';
+
+  var content = document.createElement('div');
+  content.className = 'info-content';
+  content.id = 'info-content-body';
+
+  collapsible.appendChild(content);
+  infoPanel.appendChild(collapsible);
+  hudContainer.appendChild(infoPanel);
+
+  // Apply behaviors
+  makeDraggable(infoPanel);
+  makeResizable(infoPanel, null, 'bottom-left');
+  makeCollapsible(infoPanel);
+  makeFontResizable(infoPanel);
+}
+
+// ---------------------------------------------------------------------------
+// Product Tracker Panel — Bottom Left, Draggable/Collapsible
+// ---------------------------------------------------------------------------
+
+function buildProductTrackerPanel() {
+  productTrackerPanel = document.createElement('div');
+  productTrackerPanel.id = 'product-tracker-panel';
+  productTrackerPanel.className = 'hud-panel';
+
+  // Title bar
+  var title = document.createElement('div');
+  title.className = 'hud-title';
+  title.innerHTML = titleBarHTML('Product Tracker');
+  productTrackerPanel.appendChild(title);
+
+  // Collapsible content
+  var collapsible = document.createElement('div');
+  collapsible.className = 'hud-collapsible';
+
+  var content = document.createElement('div');
+  content.className = 'tracker-content';
+  content.id = 'tracker-content-body';
+
+  collapsible.appendChild(content);
+  productTrackerPanel.appendChild(collapsible);
+  hudContainer.appendChild(productTrackerPanel);
+
+  // Apply behaviors
+  makeDraggable(productTrackerPanel);
+  makeResizable(productTrackerPanel);
+  makeCollapsible(productTrackerPanel);
+  makeFontResizable(productTrackerPanel);
+}
+
+// ---------------------------------------------------------------------------
+// Alert Bar — Fixed, top center (below controls)
+// ---------------------------------------------------------------------------
+
+function buildAlertBar() {
+  alertBar = document.createElement('div');
+  alertBar.id = 'forge-alert-bar';
+  hudContainer.appendChild(alertBar);
+}
+
+// ---------------------------------------------------------------------------
+// Status Bar — Bottom Right strip
+// ---------------------------------------------------------------------------
+
+function buildStatusBar() {
+  statusBar = document.createElement('div');
+  statusBar.id = 'forge-status-bar';
+  hudContainer.appendChild(statusBar);
+}
+
+// ============================================================================
+// VISIBILITY FILTER LOGIC
+// ============================================================================
+
 export function setVisibilityFilter(category, visible) {
   filterState[category] = visible;
 
@@ -450,12 +1321,10 @@ export function setVisibilityFilter(category, visible) {
 
     if (obj.isMesh) {
       if (visible) {
-        // Restore original material
         if (obj.userData.originalMaterial) {
           obj.material = obj.userData.originalMaterial;
         }
       } else {
-        // Store original and swap to de-emphasized
         if (!obj.userData.originalMaterial) {
           obj.userData.originalMaterial = obj.material;
         }
@@ -491,9 +1360,9 @@ export function isVisible(category) {
   return filterState[category] !== false;
 }
 
-// ---------------------------------------------------------------------------
-// Mode Switching
-// ---------------------------------------------------------------------------
+// ============================================================================
+// MODE SWITCHING
+// ============================================================================
 
 export function setMode(mode) {
   currentMode = mode;
@@ -503,13 +1372,9 @@ export function setMode(mode) {
     var btns = modeSelector.querySelectorAll('button');
     for (var i = 0; i < btns.length; i++) {
       if (btns[i].dataset.mode === mode) {
-        btns[i].style.background = '#335';
-        btns[i].style.color = '#88aaff';
-        btns[i].style.borderColor = '#557';
+        btns[i].classList.add('active');
       } else {
-        btns[i].style.background = 'none';
-        btns[i].style.color = '#aaa';
-        btns[i].style.borderColor = '#555';
+        btns[i].classList.remove('active');
       }
     }
   }
@@ -517,18 +1382,23 @@ export function setMode(mode) {
 
 export function getMode() { return currentMode; }
 
-// ---------------------------------------------------------------------------
-// HUD Updates
-// ---------------------------------------------------------------------------
+// ============================================================================
+// HUD UPDATES (throttled — DOM writes are expensive, limit to ~4/sec)
+// ============================================================================
+
+let _lastStatusText = '';
+let _trackerThrottle = 0;
+const TRACKER_INTERVAL = 250; // ms between product tracker DOM rebuilds
+let _lastTrackerTime = 0;
 
 function updateTimeDisplay() {
   if (timeDisplay) timeDisplay.textContent = formatTime(getTime());
-  if (speedDisplay) speedDisplay.textContent = (getPaused() ? 'PAUSED' : getSpeed().toFixed(1) + 'x');
+  if (speedDisplay) {
+    var newText = (getPaused() ? 'PAUSED' : getSpeed().toFixed(1) + 'x');
+    if (speedDisplay.textContent !== newText) speedDisplay.textContent = newText;
+  }
 }
 
-/**
- * Update the status bar with current stats.
- */
 export function updateStatusBar(stats) {
   if (!statusBar) return;
   var parts = [];
@@ -539,31 +1409,34 @@ export function updateStatusBar(stats) {
     if (stats.productCount !== undefined) parts.push('Products: ' + stats.productCount);
     if (stats.mobileCount !== undefined) parts.push('Vehicles: ' + stats.mobileCount);
   }
-  statusBar.textContent = parts.join('  |  ');
+  var text = parts.join('  ·  ');
+  if (text !== _lastStatusText) {
+    statusBar.textContent = text;
+    _lastStatusText = text;
+  }
 }
 
-// ---------------------------------------------------------------------------
-// Info Panel
-// ---------------------------------------------------------------------------
+// ============================================================================
+// INFO PANEL
+// ============================================================================
 
 export function showInfoPanel(data) {
   if (!infoPanel) return;
   infoPanel.style.display = 'block';
-  infoPanel.innerHTML = '';
+
+  var body = document.getElementById('info-content-body');
+  if (!body) return;
+  body.innerHTML = '';
 
   if (!data) { hideInfoPanel(); return; }
 
+  // Object title
   var titleEl = document.createElement('div');
-  titleEl.style.cssText = 'color:#88ccff;font-weight:bold;margin-bottom:6px;font-size:13px;';
+  titleEl.className = 'info-title-text';
   titleEl.textContent = (data.name || data.id || 'Unknown');
-  infoPanel.appendChild(titleEl);
+  body.appendChild(titleEl);
 
-  var closeBtn = document.createElement('button');
-  closeBtn.textContent = 'X';
-  closeBtn.style.cssText = 'position:absolute;top:4px;right:4px;background:none;border:none;color:#666;cursor:pointer;font-size:12px;';
-  closeBtn.addEventListener('click', hideInfoPanel);
-  infoPanel.appendChild(closeBtn);
-
+  // Data rows
   var fields = Object.keys(data);
   for (var i = 0; i < fields.length; i++) {
     var key = fields[i];
@@ -572,9 +1445,20 @@ export function showInfoPanel(data) {
     if (typeof val === 'object' && val !== null) val = JSON.stringify(val);
 
     var row = document.createElement('div');
-    row.style.cssText = 'display:flex;justify-content:space-between;padding:1px 0;font-size:11px;border-bottom:1px solid #222;';
-    row.innerHTML = '<span style="color:#888">' + key + '</span><span style="color:#ccc">' + val + '</span>';
-    infoPanel.appendChild(row);
+    row.className = 'info-row';
+
+    var keySpan = document.createElement('span');
+    keySpan.className = 'info-key';
+    keySpan.textContent = key;
+    row.appendChild(keySpan);
+
+    var valSpan = document.createElement('span');
+    valSpan.className = 'info-val';
+    valSpan.textContent = val;
+    valSpan.title = String(val);
+    row.appendChild(valSpan);
+
+    body.appendChild(row);
   }
 }
 
@@ -582,14 +1466,10 @@ export function hideInfoPanel() {
   if (infoPanel) infoPanel.style.display = 'none';
 }
 
-// ---------------------------------------------------------------------------
-// Product Tracker Panel
-// ---------------------------------------------------------------------------
+// ============================================================================
+// PRODUCT TRACKER
+// ============================================================================
 
-/**
- * Display all products with color-coded lifecycle state.
- * @param {Array} products - Array of product registry entries
- */
 export function showProductTracker(products) {
   if (!productTrackerPanel) return;
   if (!products || products.length === 0) {
@@ -597,25 +1477,31 @@ export function showProductTracker(products) {
     return;
   }
 
-  productTrackerPanel.style.display = 'block';
-  productTrackerPanel.innerHTML = '';
+  // Throttle: only rebuild DOM at TRACKER_INTERVAL
+  var now = performance.now();
+  if (now - _lastTrackerTime < TRACKER_INTERVAL) return;
+  _lastTrackerTime = now;
 
-  var title = document.createElement('div');
-  title.style.cssText = 'color:#88ccff;font-weight:bold;margin-bottom:4px;font-size:12px;';
-  title.textContent = 'Product Tracker (' + products.length + ')';
-  productTrackerPanel.appendChild(title);
+  productTrackerPanel.style.display = 'block';
+
+  // Update the title to show count
+  var titleSpan = productTrackerPanel.querySelector('.hud-title span:first-child');
+  if (titleSpan) titleSpan.textContent = 'Product Tracker (' + products.length + ')';
+
+  var body = document.getElementById('tracker-content-body');
+  if (!body) return;
+  body.innerHTML = '';
 
   var table = document.createElement('div');
-  table.style.cssText = 'display:grid;grid-template-columns:auto 1fr auto auto;gap:2px 8px;font-size:11px;';
+  table.className = 'tracker-grid';
 
-  // Import STATE_COLORS dynamically from the data
   for (var i = 0; i < products.length; i++) {
     var p = products[i];
     var stateColor = getProductStateColor(p.state);
 
     // ID
     var idEl = document.createElement('span');
-    idEl.style.cssText = 'color:#aaa;cursor:pointer;';
+    idEl.className = 'tracker-id';
     idEl.textContent = p.id;
     idEl.dataset.productId = p.id;
     idEl.addEventListener('click', function(e) {
@@ -625,24 +1511,25 @@ export function showProductTracker(products) {
 
     // State with color dot
     var stateEl = document.createElement('span');
-    stateEl.innerHTML = '<span style="display:inline-block;width:6px;height:6px;border-radius:50%;background:' + stateColor + ';margin-right:4px;"></span>' + p.state;
-    stateEl.style.color = '#ccc';
+    stateEl.className = 'tracker-state';
+    stateEl.innerHTML = '<span class="tracker-state-dot" style="background:' + stateColor + '"></span>' + p.state;
     table.appendChild(stateEl);
 
     // Temperature
     var tempEl = document.createElement('span');
-    tempEl.style.color = p.temperature > 500 ? '#ff6633' : '#888';
-    tempEl.textContent = Math.round(p.temperature) + ' C';
+    tempEl.className = 'tracker-temp';
+    tempEl.style.color = p.temperature > 500 ? '#ff6633' : THEME.textDim;
+    tempEl.textContent = Math.round(p.temperature) + '°C';
     table.appendChild(tempEl);
 
     // Location
     var locEl = document.createElement('span');
-    locEl.style.color = '#666';
-    locEl.textContent = p.location || '-';
+    locEl.className = 'tracker-loc';
+    locEl.textContent = p.location || '—';
     table.appendChild(locEl);
   }
 
-  productTrackerPanel.appendChild(table);
+  body.appendChild(table);
 }
 
 function getProductStateColor(state) {
@@ -660,9 +1547,9 @@ export function hideProductTracker() {
   if (productTrackerPanel) productTrackerPanel.style.display = 'none';
 }
 
-// ---------------------------------------------------------------------------
-// Alert Bar
-// ---------------------------------------------------------------------------
+// ============================================================================
+// ALERT BAR
+// ============================================================================
 
 export function showAlert(message, duration) {
   if (!alertBar) return;
@@ -677,17 +1564,14 @@ export function hideAlert() {
   if (alertBar) alertBar.style.display = 'none';
 }
 
-// ---------------------------------------------------------------------------
-// Raycasting and Event Handling
-// ---------------------------------------------------------------------------
+// ============================================================================
+// RAYCASTING AND EVENT HANDLING
+// ============================================================================
 
 function onCanvasClick(event) {
   if (!camera || !scene) return;
-
-  // Prevent handling during UI interaction
   if (event.target !== renderer.domElement) return;
 
-  // Calculate mouse position in normalized device coordinates
   var rect = renderer.domElement.getBoundingClientRect();
   mouseVec.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
   mouseVec.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
@@ -697,12 +1581,10 @@ function onCanvasClick(event) {
 
   if (intersects.length === 0) return;
 
-  // Find the first meaningful hit
   for (var i = 0; i < intersects.length; i++) {
     var hit = intersects[i];
     var obj = hit.object;
 
-    // Check for registry-linked object (equipment, product)
     if (obj.userData && obj.userData.registryId) {
       if (onObjectClickCallback) {
         onObjectClickCallback({
@@ -715,7 +1597,6 @@ function onCanvasClick(event) {
       return;
     }
 
-    // Check for utility marker
     if (obj.userData && obj.userData.utilityId) {
       if (onObjectClickCallback) {
         onObjectClickCallback({
@@ -728,7 +1609,6 @@ function onCanvasClick(event) {
       return;
     }
 
-    // Floor/zone click -> grid cell
     if (obj.userData && obj.userData.visibilityCategory === 'zones') {
       var gridX = Math.floor(hit.point.x);
       var gridZ = Math.floor(hit.point.z);
@@ -738,7 +1618,6 @@ function onCanvasClick(event) {
       return;
     }
 
-    // Wall click
     if (obj.userData && obj.userData.visibilityCategory === 'walls') {
       if (onGridClickCallback) {
         var wx = obj.userData.gridX !== undefined ? obj.userData.gridX : Math.floor(hit.point.x);
@@ -749,7 +1628,6 @@ function onCanvasClick(event) {
     }
   }
 
-  // Fallback: floor click from intersection point
   var fallbackHit = intersects[0];
   if (onGridClickCallback) {
     onGridClickCallback({
@@ -760,25 +1638,17 @@ function onCanvasClick(event) {
   }
 }
 
-/**
- * Register a callback for when a 3D object (equipment/product/utility) is clicked.
- * @param {function} callback - Receives { type, id, point, object }
- */
 export function onObjectClick(callback) {
   onObjectClickCallback = callback;
 }
 
-/**
- * Register a callback for when a grid cell is clicked.
- * @param {function} callback - Receives { gridX, gridZ, point }
- */
 export function onGridClick(callback) {
   onGridClickCallback = callback;
 }
 
-// ---------------------------------------------------------------------------
-// Camera Helpers (delegate to controls.js)
-// ---------------------------------------------------------------------------
+// ============================================================================
+// CAMERA HELPERS
+// ============================================================================
 
 export function flyToPosition(x, y, z, distance) {
   flyTo(x, y, z, distance);
@@ -788,9 +1658,9 @@ export function resetCamera() {
   resetView();
 }
 
-// ---------------------------------------------------------------------------
-// Utility Exports
-// ---------------------------------------------------------------------------
+// ============================================================================
+// UTILITY EXPORTS
+// ============================================================================
 
 export function getVisibilityCategories() {
   return VISIBILITY_CATEGORIES;

@@ -259,18 +259,33 @@ export function buildQuenchMesh(specs, registryId) {
   return group;
 }
 
+// PERF: Pre-allocated Color objects for quench liquid updates
+const _quenchBaseColor = new THREE.Color();
+const _quenchHotColor = new THREE.Color(0x664422);
+
 function updateQuenchLiquid(entry) {
   if (!entry.mesh) return;
 
   var specs = entry.specs;
+
+  // Skip if temperature hasn't changed meaningfully
+  var lastTemp = entry._lastLiquidTemp;
+  if (lastTemp !== undefined && Math.abs(specs.currentTemp - lastTemp) < 1) return;
+  entry._lastLiquidTemp = specs.currentTemp;
+
   var tempRatio = Math.min(1, (specs.currentTemp - specs.ambientTemp) / specs.maxTempRise);
 
-  entry.mesh.traverse(function(child) {
-    if (child.userData && child.userData.isLiquid && child.isMesh) {
-      // Shift color from cool to warm as quenchant heats up
-      var baseColor = new THREE.Color(QUENCHANT_COLORS[specs.quenchantType] || 0x224466);
-      var hotColor = new THREE.Color(0x664422);
-      child.material.color.copy(baseColor).lerp(hotColor, tempRatio);
-    }
-  });
+  // Cache the liquid mesh child
+  if (!entry._liquidMesh) {
+    entry.mesh.traverse(function(child) {
+      if (child.userData && child.userData.isLiquid && child.isMesh) {
+        entry._liquidMesh = child;
+      }
+    });
+  }
+  var liquid = entry._liquidMesh;
+  if (!liquid) return;
+
+  _quenchBaseColor.set(QUENCHANT_COLORS[specs.quenchantType] || 0x224466);
+  liquid.material.color.copy(_quenchBaseColor).lerp(_quenchHotColor, tempRatio);
 }

@@ -243,9 +243,13 @@ function updatePressRam(entry) {
   var phase = progress <= 0.5 ? progress * 2 : (1 - progress) * 2;
   var ramY = frameH - 0.3 - (phase * strokeLen * 2);
 
-  entry.mesh.traverse(function(child) {
-    if (child.userData && child.userData.isRam) {
-      child.position.y = ramY;
-    }
-  });
+  // Cache ram mesh child to avoid traverse every frame
+  if (!entry._ramMesh) {
+    entry.mesh.traverse(function(child) {
+      if (child.userData && child.userData.isRam) {
+        entry._ramMesh = child;
+      }
+    });
+  }
+  if (entry._ramMesh) entry._ramMesh.position.y = ramY;
 }
