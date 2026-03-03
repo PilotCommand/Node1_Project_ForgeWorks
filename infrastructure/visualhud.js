@@ -10,6 +10,7 @@
 // ============================================================================
 
 import * as THREE from 'three';
+import Stats from 'three/examples/jsm/libs/stats.module.js';
 import { tick, getTime, getDelta, getSpeed, setSpeed, pause, resume, getPaused, formatTime } from './worldclock.js';
 import { getDisplaySystem, setDisplaySystem } from './measurementunits.js';
 import { initControls, update as updateControls, resetView, flyTo } from './controls.js';
@@ -88,6 +89,7 @@ let filterPanel = null;
 let infoPanel = null;
 let productTrackerPanel = null;
 let alertBar = null;
+let statsPanel = null;
 let statusBar = null;
 
 // Grid dimensions (set during init)
@@ -113,8 +115,8 @@ export function initRenderer(containerElement, gw, gd) {
 
   // Scene
   scene = new THREE.Scene();
-  scene.background = new THREE.Color(0x0d0d0d);
-  scene.fog = new THREE.Fog(0x0d0d0d, 80, 200);
+  scene.background = new THREE.Color(0x0a1628);
+  scene.fog = new THREE.Fog(0x0a1628, 120, 300);
 
   // Camera
   camera = new THREE.PerspectiveCamera(60, container.clientWidth / container.clientHeight, 0.1, 500);
@@ -130,11 +132,11 @@ export function initRenderer(containerElement, gw, gd) {
   renderer.toneMappingExposure = 1.0;
   container.appendChild(renderer.domElement);
 
-  // Lighting — overhead factory lighting
-  var ambientLight = new THREE.AmbientLight(0x404040, 0.6);
+  // Lighting — bright factory overhead lighting
+  var ambientLight = new THREE.AmbientLight(0x99aabb, 1.0);
   scene.add(ambientLight);
 
-  var dirLight = new THREE.DirectionalLight(0xffffff, 0.8);
+  var dirLight = new THREE.DirectionalLight(0xffffff, 1.5);
   dirLight.position.set(gridW / 2, 50, gridH / 2);
   dirLight.castShadow = true;
   dirLight.shadow.mapSize.width = 2048;
@@ -147,12 +149,25 @@ export function initRenderer(containerElement, gw, gd) {
   dirLight.shadow.camera.bottom = -gridH;
   scene.add(dirLight);
 
-  var fillLight = new THREE.DirectionalLight(0x8899aa, 0.3);
+  var fillLight = new THREE.DirectionalLight(0x8899aa, 0.8);
   fillLight.position.set(-20, 30, -20);
   scene.add(fillLight);
 
+  // Hemisphere light for natural sky-ground gradient
+  var hemiLight = new THREE.HemisphereLight(0xaabbcc, 0x444422, 0.6);
+  scene.add(hemiLight);
+
   // Camera controls
   initControls(camera, renderer.domElement, gridW, gridH);
+
+  // FPS counter — lower left corner
+  statsPanel = new Stats();
+  statsPanel.showPanel(0); // 0 = FPS, 1 = MS, 2 = MB
+  statsPanel.dom.style.position = 'absolute';
+  statsPanel.dom.style.left = '8px';
+  statsPanel.dom.style.bottom = '8px';
+  statsPanel.dom.style.top = 'auto';
+  container.appendChild(statsPanel.dom);
 
   // HUD
   buildHUD();
@@ -206,6 +221,8 @@ export function startRenderLoop(callback) {
   function loop(timestamp) {
     animationFrameId = requestAnimationFrame(loop);
 
+    if (statsPanel) statsPanel.begin();
+
     var realDeltaMs = timestamp - lastTimestamp;
     lastTimestamp = timestamp;
 
@@ -228,6 +245,8 @@ export function startRenderLoop(callback) {
 
     // Update HUD time display
     updateTimeDisplay();
+
+    if (statsPanel) statsPanel.end();
   }
 
   animationFrameId = requestAnimationFrame(loop);
@@ -314,12 +333,12 @@ function buildHUD() {
 
   // --- Bottom-Left: Info Panel ---
   infoPanel = document.createElement('div');
-  infoPanel.style.cssText = 'position:absolute;bottom:40px;left:8px;width:280px;max-height:300px;overflow-y:auto;background:rgba(20,20,30,0.9);border:1px solid #333;border-radius:4px;padding:8px;display:none;pointer-events:auto;';
+  infoPanel.style.cssText = 'position:absolute;bottom:40px;right:8px;width:280px;max-height:300px;overflow-y:auto;background:rgba(20,20,30,0.9);border:1px solid #333;border-radius:4px;padding:8px;display:none;pointer-events:auto;';
   hudContainer.appendChild(infoPanel);
 
   // --- Bottom-Center: Product Tracker ---
   productTrackerPanel = document.createElement('div');
-  productTrackerPanel.style.cssText = 'position:absolute;bottom:40px;left:300px;right:240px;max-height:200px;overflow-y:auto;background:rgba(20,20,30,0.9);border:1px solid #333;border-radius:4px;padding:8px;display:none;pointer-events:auto;';
+  productTrackerPanel.style.cssText = 'position:absolute;bottom:40px;right:300px;left:240px;max-height:200px;overflow-y:auto;background:rgba(20,20,30,0.9);border:1px solid #333;border-radius:4px;padding:8px;display:none;pointer-events:auto;';
   hudContainer.appendChild(productTrackerPanel);
 
   // --- Alert Bar ---
@@ -329,7 +348,7 @@ function buildHUD() {
 
   // --- Status Bar ---
   statusBar = document.createElement('div');
-  statusBar.style.cssText = 'position:absolute;bottom:0;left:0;right:0;height:30px;background:rgba(15,15,20,0.95);border-top:1px solid #333;display:flex;align-items:center;padding:0 12px;gap:20px;font-size:11px;color:#777;pointer-events:auto;';
+  statusBar.style.cssText = 'position:absolute;bottom:0;right:0;height:30px;background:rgba(15,15,20,0.95);border-top:1px solid #333;border-left:1px solid #333;display:flex;align-items:center;padding:0 12px;gap:20px;font-size:11px;color:#777;pointer-events:auto;border-radius:4px 0 0 0;';
   hudContainer.appendChild(statusBar);
 }
 

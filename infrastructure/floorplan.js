@@ -747,7 +747,7 @@ function reconstructPath(node) {
 export function buildFloorMesh() {
   var geometry = new THREE.PlaneGeometry(gridWidth * cellSize, gridDepth * cellSize);
   var material = new THREE.MeshStandardMaterial({
-    color: 0x1a1a1a,
+    color: 0x3a3a3a,
     roughness: 0.9,
     metalness: 0.1,
     side: THREE.DoubleSide,
@@ -834,7 +834,7 @@ export function buildWallMeshes() {
       if (grid[z][x] === 'wall') {
         var wallGeo = new THREE.BoxGeometry(cellSize, wallHeight, cellSize);
         var wallMat = new THREE.MeshStandardMaterial({
-          color: 0x444444,
+          color: 0x606060,
           roughness: 0.7,
           metalness: 0.2,
         });
@@ -882,9 +882,9 @@ export function buildGridOverlay() {
   geometry.setAttribute('position', new THREE.Float32BufferAttribute(points, 3));
 
   var material = new THREE.LineBasicMaterial({
-    color: 0x333333,
+    color: 0x555555,
     transparent: true,
-    opacity: 0.3,
+    opacity: 0.5,
   });
 
   gridOverlayMesh = new THREE.LineSegments(geometry, material);
