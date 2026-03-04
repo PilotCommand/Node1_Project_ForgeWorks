@@ -24,6 +24,10 @@ let speed = 1.0;         // multiplier (1.0 = real time, 0 = paused via speed)
 let isPaused = false;    // explicit pause flag
 let tickCount = 0;       // integer frame count
 
+// Simulation calendar — the "real world" date/time the forge starts at
+let simStartDate = new Date(0, 0, 1, 0, 0, 0); // 01 Jan 0000, 00:00:00
+simStartDate.setFullYear(0); // JS Date constructor treats 0 as 1900, so force it
+
 // Safety cap: if a real frame takes longer than this (in ms), clamp it.
 // Prevents physics explosions after tab-away or debugger pauses.
 const MAX_REAL_DELTA_MS = 200; // 200ms = 5 FPS floor
@@ -165,6 +169,7 @@ export function takeSnapshot() {
     speed,
     isPaused,
     tickCount,
+    simStartDate: simStartDate.getTime(),
   };
 }
 
@@ -183,6 +188,7 @@ export function restoreSnapshot(snapshot) {
   speed = snapshot.speed;
   isPaused = snapshot.isPaused;
   tickCount = snapshot.tickCount;
+  if (snapshot.simStartDate) simStartDate = new Date(snapshot.simStartDate);
 }
 
 // ---------------------------------------------------------------------------
@@ -196,20 +202,12 @@ export function restoreSnapshot(snapshot) {
  */
 export function formatTime(seconds) {
   const t = seconds !== undefined ? seconds : currentTime;
-  const absT = Math.abs(t);
+  const d = new Date(simStartDate.getTime() + t * 1000);
 
-  const days = Math.floor(absT / 86400);
-  const hours = Math.floor((absT % 86400) / 3600);
-  const minutes = Math.floor((absT % 3600) / 60);
-  const secs = Math.floor(absT % 60);
+  const hh = String(d.getHours()).padStart(2, '0');
+  const mm = String(d.getMinutes()).padStart(2, '0');
+  const ss = String(d.getSeconds()).padStart(2, '0');
 
-  const hh = String(hours).padStart(2, '0');
-  const mm = String(minutes).padStart(2, '0');
-  const ss = String(secs).padStart(2, '0');
-
-  if (days > 0) {
-    return `${days}d ${hh}:${mm}:${ss}`;
-  }
   return `${hh}:${mm}:${ss}`;
 }
 
@@ -223,4 +221,48 @@ export function formatSpeed(spd) {
   if (s >= 100) return `${Math.round(s)}x`;
   if (s >= 10) return `${s.toFixed(0)}x`;
   return `${s.toFixed(1)}x`;
+}
+
+// ---------------------------------------------------------------------------
+// Utility — Simulation Calendar Date
+// ---------------------------------------------------------------------------
+
+const MONTH_NAMES = [
+  'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
+  'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec',
+];
+
+/**
+ * Get the current simulation date as a Date object.
+ * Computed from simStartDate + elapsed simulation seconds.
+ * @returns {Date}
+ */
+export function getSimDate() {
+  return new Date(simStartDate.getTime() + currentTime * 1000);
+}
+
+/**
+ * Format the current simulation date as "DD Mon YYYY".
+ * @param {number} [seconds] - Optional override. Defaults to currentTime.
+ * @returns {string} e.g., "03 Mar 2025"
+ */
+export function formatDate(seconds) {
+  const t = seconds !== undefined ? seconds : currentTime;
+  const d = new Date(simStartDate.getTime() + t * 1000);
+
+  const day = String(d.getDate()).padStart(2, '0');
+  const month = MONTH_NAMES[d.getMonth()];
+  const year = String(d.getFullYear()).padStart(4, '0');
+
+  return `${day} ${month} ${year}`;
+}
+
+/**
+ * Set the simulation start date.
+ * @param {Date} date
+ */
+export function setSimStartDate(date) {
+  if (date instanceof Date) {
+    simStartDate = new Date(date.getTime());
+  }
 }

@@ -15,7 +15,7 @@
 // ============================================================================
 
 import * as THREE from 'three';
-import { getCamera, getRenderer, addToScene, removeFromScene } from './visualhud.js';
+import { getCamera, getRenderer, addToScene, removeFromScene, setRegistryData } from './visualhud.js';
 import { setRotateEnabled, setPanEnabled } from './controls.js';
 import { registerZone, unregisterZone, getAllZones, ZONE_TYPES, ZONE_COLORS, getZoneLabel, getZoneColor, getZoneMenuItems } from './floorplan.js';
 
@@ -675,6 +675,7 @@ function handleContextAction(action) {
       subtractFromZones(selections[s].rect);
     }
     clearSelections();
+    pushZonesToRegistry();
     return;
   }
 
@@ -696,6 +697,7 @@ function handleContextAction(action) {
     }
 
     clearSelections();
+    pushZonesToRegistry();
     console.log('Zones:', zones.map(function(z) { return z.id + ' ' + z.type + ' ' + JSON.stringify(z.rect); }));
     return;
   }
@@ -900,6 +902,20 @@ function rectsOverlap(a, b) {
 
 function copyRect(r) {
   return { minX: r.minX, minZ: r.minZ, maxX: r.maxX, maxZ: r.maxZ };
+}
+
+function pushZonesToRegistry() {
+  var items = [];
+  for (var i = 0; i < zones.length; i++) {
+    var z = zones[i];
+    items.push({
+      id: z.id,
+      label: getZoneLabel(z.type),
+      type: z.type.replace('zone:', ''),
+      color: getZoneColor(z.type),
+    });
+  }
+  setRegistryData('zones', items);
 }
 
 function onContextMenu(event) {
