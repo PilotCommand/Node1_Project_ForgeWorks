@@ -30,6 +30,11 @@ import * as builder from './forgehousebuilder.js';
 import * as changer from './forgehousechanger.js';
 import * as dispatcher from './dispatcher.js';
 
+// --- Modes ---
+import * as modeBuild from './mode_build.js';
+import * as modeSelect from './mode_select.js';
+import * as modeSpectate from './mode_spectate.js';
+
 // --- Registries ---
 import * as staticRegistry from '../static_equipment/static_registry.js';
 import * as mobileRegistry from '../mobile_equipment/mobile_registry.js';
@@ -55,7 +60,13 @@ import * as metalpart from '../production_entities/product_metalpart.js';
 // Application State
 // ---------------------------------------------------------------------------
 
-let currentMode = 'sandbox';   // sandbox, prediction, operating
+let currentMode = 'spectate';   // build, select, spectate
+let MODES = ['build', 'select', 'spectate'];
+let MODE_MODULES = {
+  build: modeBuild,
+  select: modeSelect,
+  spectate: modeSpectate,
+};
 let isInitialized = false;
 let isPredictionRunning = false;
 
@@ -88,45 +99,62 @@ export function init(container, options) {
   }
   gridsquare.loadLayout(layoutConfig);
 
-  // 3. Load utilities
-  powerutilities.loadUtilities(powerutilities.getDefaultCoulterUtilities());
-
-  // 4. Initialize renderer and HUD
+  // 3. Initialize renderer and HUD
   var gridW = gridsquare.getGridWidth();
   var gridD = gridsquare.getGridDepth();
   visualhud.initRenderer(container, gridW, gridD);
 
-  // 4b. Initialize builder with scene reference
+  // 4. Initialize builder with scene reference
   builder.initBuilder(visualhud.getScene());
 
-  // 5. Build world meshes (floor, grid overlay, zones, walls, pathways)
-  builder.buildWorld();
+  // 5. Build only the grid overlay (no floor, no walls)
+  builder.buildGridOnly();
 
-  // 6. Build utility markers
-  builder.buildUtilityMarkers(powerutilities.getDefaultCoulterUtilities());
+  // 6. Start the render loop — update grid fade and active mode each frame
+  visualhud.startRenderLoop(function() {
+    var target = controls.getTarget();
+    var dist = controls.getDistance();
+    if (target && dist !== undefined) {
+      builder.updateGridFocus(target.x, target.z, dist);
+    }
 
-  // 7. Apply Coulter zone painting
-  if (opts.layout !== 'empty') {
-    gridsquare.applyCoulterZones();
-    builder.rebuildZoneOverlays();
-  }
+    // Tick active mode
+    var dt = worldclock.getDelta();
+    MODE_MODULES[currentMode].update(dt);
+  });
 
-  // 8. Place default equipment (Coulter layout)
-  if (opts.layout !== 'empty') {
-    placeDefaultEquipment();
-  }
+  // 7. Set up mode cycling (spacebar)
+  window.addEventListener('keydown', function(e) {
+    if (e.code === 'Space' && !e.repeat) {
+      e.preventDefault();
+      cycleMode();
+    }
+  });
 
-  // 9. Register event handlers
-  setupEventHandlers();
-
-  // 10. Set initial mode
-  setMode('sandbox');
-
-  // 11. Start the render loop
-  visualhud.startRenderLoop(mainUpdate);
+  // 8. Activate starting mode and show indicator
+  MODE_MODULES[currentMode].activate();
+  visualhud.showModeIndicator(currentMode);
 
   isInitialized = true;
   console.log('Forgeworks initialized. Grid: ' + gridW + 'x' + gridD + ', Layout: ' + layoutConfig.name);
+}
+
+// ---------------------------------------------------------------------------
+// Mode Cycling
+// ---------------------------------------------------------------------------
+
+function cycleMode() {
+  MODE_MODULES[currentMode].deactivate();
+  var idx = MODES.indexOf(currentMode);
+  idx = (idx + 1) % MODES.length;
+  currentMode = MODES[idx];
+  MODE_MODULES[currentMode].activate();
+  visualhud.showModeIndicator(currentMode);
+  console.log('Mode: ' + currentMode);
+}
+
+export function getMode() {
+  return currentMode;
 }
 
 // ---------------------------------------------------------------------------
@@ -373,9 +401,6 @@ export function setMode(mode) {
   }
 }
 
-export function getMode() {
-  return currentMode;
-}
 
 // ---------------------------------------------------------------------------
 // Status Bar Updates

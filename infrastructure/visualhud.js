@@ -93,6 +93,9 @@ let productTrackerPanel = null;
 let alertBar = null;
 let statusBar = null;
 let statsPanel = null;
+let modeIndicator = null;
+let modeIndicatorTimeout = null;
+let modeFlash = null;
 
 // HUD internal references
 let modeSelector = null;
@@ -178,7 +181,7 @@ export function initRenderer(containerElement, gw, gd) {
   // Scene
   scene = new THREE.Scene();
   scene.background = new THREE.Color(0x0a1628);
-  scene.fog = new THREE.Fog(0x0a1628, 120, 300);
+  // No fog — grid shader handles its own distance fade
 
   // Camera
   camera = new THREE.PerspectiveCamera(60, container.clientWidth / container.clientHeight, 0.1, 500);
@@ -225,21 +228,22 @@ export function initRenderer(containerElement, gw, gd) {
   statsPanel = new Stats();
   statsPanel.showPanel(0);
   statsPanel.dom.style.position = 'absolute';
-  statsPanel.dom.style.left = '8px';
-  statsPanel.dom.style.bottom = '8px';
+  statsPanel.dom.style.left = '0px';
+  statsPanel.dom.style.bottom = '0px';
   statsPanel.dom.style.top = 'auto';
+  statsPanel.dom.style.margin = '0';
   container.appendChild(statsPanel.dom);
 
-  // HUD
-  createStyles();
-  buildHUD();
-  hudInitialized = true;
+  // HUD — disabled for now (clean grid view)
+  // createStyles();
+  // buildHUD();
+  hudInitialized = false;
 
   // Window resize
   window.addEventListener('resize', onWindowResize);
 
-  // Mouse click (raycasting)
-  renderer.domElement.addEventListener('click', onCanvasClick);
+  // Mouse click — disabled for now
+  // renderer.domElement.addEventListener('click', onCanvasClick);
 
   return { renderer: renderer, scene: scene, camera: camera };
 }
@@ -1562,6 +1566,100 @@ export function showAlert(message, duration) {
 
 export function hideAlert() {
   if (alertBar) alertBar.style.display = 'none';
+}
+
+// ============================================================================
+// MODE INDICATOR
+// ============================================================================
+
+var MODE_CONFIG = {
+  build:    { label: 'BUILD',    color: '#ff8800', icon: '⚒' },
+  select:   { label: 'SELECT',   color: '#00ffc8', icon: '◎' },
+  spectate: { label: 'SPECTATE', color: '#6699ff', icon: '👁' },
+};
+
+/**
+ * Show or update the mode indicator.
+ * Persistent badge in bottom-right + brief center flash on change.
+ */
+export function showModeIndicator(mode) {
+  var cfg = MODE_CONFIG[mode] || MODE_CONFIG.build;
+
+  // --- Create persistent badge (once) ---
+  if (!modeIndicator) {
+    modeIndicator = document.createElement('div');
+    modeIndicator.id = 'mode-badge';
+    Object.assign(modeIndicator.style, {
+      position: 'absolute',
+      bottom: '10px',
+      right: '10px',
+      fontFamily: "'Consolas', 'SF Mono', 'Fira Code', monospace",
+      fontSize: '11px',
+      letterSpacing: '1.5px',
+      padding: '6px 14px',
+      borderRadius: '3px',
+      pointerEvents: 'none',
+      zIndex: '20',
+      transition: 'all 0.25s ease',
+    });
+    container.appendChild(modeIndicator);
+  }
+
+  // Update badge
+  modeIndicator.textContent = cfg.icon + '  ' + cfg.label;
+  modeIndicator.style.color = cfg.color;
+  modeIndicator.style.border = '1px solid ' + cfg.color + '44';
+  modeIndicator.style.background = 'rgba(0, 10, 20, 0.7)';
+
+  // --- Center flash ---
+  // Remove previous flash immediately
+  if (modeFlash && modeFlash.parentNode) {
+    modeFlash.parentNode.removeChild(modeFlash);
+  }
+
+  modeFlash = document.createElement('div');
+  Object.assign(modeFlash.style, {
+    position: 'absolute',
+    top: '50%',
+    left: '50%',
+    transform: 'translate(-50%, -50%) scale(0.9)',
+    fontFamily: "'Consolas', 'SF Mono', 'Fira Code', monospace",
+    fontSize: '22px',
+    fontWeight: '600',
+    letterSpacing: '4px',
+    color: cfg.color,
+    textShadow: '0 0 20px ' + cfg.color + '66',
+    opacity: '0',
+    pointerEvents: 'none',
+    zIndex: '30',
+    transition: 'opacity 0.15s ease, transform 0.15s ease',
+  });
+  modeFlash.textContent = cfg.icon + '  ' + cfg.label;
+  container.appendChild(modeFlash);
+
+  // Animate in
+  requestAnimationFrame(function() {
+    if (modeFlash) {
+      modeFlash.style.opacity = '1';
+      modeFlash.style.transform = 'translate(-50%, -50%) scale(1)';
+    }
+  });
+
+  // Clear previous timeout
+  if (modeIndicatorTimeout) clearTimeout(modeIndicatorTimeout);
+
+  // Fade out and remove
+  modeIndicatorTimeout = setTimeout(function() {
+    if (modeFlash) {
+      modeFlash.style.opacity = '0';
+      modeFlash.style.transform = 'translate(-50%, -50%) scale(1.05)';
+      var ref = modeFlash;
+      setTimeout(function() {
+        if (ref.parentNode) ref.parentNode.removeChild(ref);
+        if (modeFlash === ref) modeFlash = null;
+      }, 200);
+    }
+  }, 800);
 }
 
 // ============================================================================

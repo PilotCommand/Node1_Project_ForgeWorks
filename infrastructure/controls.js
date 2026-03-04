@@ -73,14 +73,12 @@ export function initControls(cam, dom, gridWidth, gridDepth) {
   camera = cam;
   domElement = dom;
 
-  // Calculate default positions based on grid size
-  const centerX = gridWidth / 2;
-  const centerZ = gridDepth / 2;
+  // Calculate default positions — camera centered on grid origin (0,0,0)
   const maxDim = Math.max(gridWidth, gridDepth);
   const cameraHeight = maxDim * 0.85; // high enough to see the whole floor
 
-  defaultTarget = new THREE.Vector3(centerX, 0, centerZ);
-  defaultPosition = new THREE.Vector3(centerX, cameraHeight, centerZ);
+  defaultTarget = new THREE.Vector3(0, 0, 0);
+  defaultPosition = new THREE.Vector3(0, cameraHeight, 0);
 
   // Position camera top-down
   camera.position.copy(defaultPosition);
@@ -119,9 +117,8 @@ export function initControls(cam, dom, gridWidth, gridDepth) {
   // Pan parallel to screen plane, not ground plane
   orbitControls.screenSpacePanning = true;
 
-  // Set default pan bounds with margin around the grid
-  const margin = 10;
-  setPanBounds(-margin, gridWidth + margin, -margin, gridDepth + margin);
+  // No pan bounds — infinite grid
+  // setPanBounds() can be called later if needed
 
   // Force an initial update
   orbitControls.update();
@@ -365,6 +362,34 @@ export function disableControls() {
  */
 export function isEnabled() {
   return orbitControls ? orbitControls.enabled : false;
+}
+
+/**
+ * Enable or disable left-click orbit rotation.
+ * Used by build mode to claim left-click for selection.
+ * @param {boolean} enabled
+ */
+export function setRotateEnabled(enabled) {
+  if (!orbitControls) return;
+  if (enabled) {
+    orbitControls.mouseButtons.LEFT = THREE.MOUSE.ROTATE;
+  } else {
+    orbitControls.mouseButtons.LEFT = -1;
+  }
+}
+
+/**
+ * Enable or disable right-click panning.
+ * Used by build mode to claim right-click for context menu.
+ * @param {boolean} enabled
+ */
+export function setPanEnabled(enabled) {
+  if (!orbitControls) return;
+  if (enabled) {
+    orbitControls.mouseButtons.RIGHT = THREE.MOUSE.PAN;
+  } else {
+    orbitControls.mouseButtons.RIGHT = -1;
+  }
 }
 
 // ---------------------------------------------------------------------------

@@ -52,6 +52,12 @@ var utilityGroup = null;
 // All spawned equipment/vehicle/product meshes, keyed by registry ID
 var spawnedMeshes = {};
 
+// Infinite grid system
+var gridShaderMaterial = null;  // ShaderMaterial on the ground plane
+var gridLabelPool = [];         // recycled sprite pool for axis numbers
+var gridAxisLabels = {};        // fixed axis name sprites { xLabel, zLabel, originLabel }
+var gridLabelGroup = null;      // THREE.Group holding all label sprites
+
 
 // ---------------------------------------------------------------------------
 // Color Constants for Equipment Types
@@ -170,6 +176,13 @@ export function buildWorld() {
 }
 
 /**
+ * Build only the grid overlay lines (no floor, walls, zones, or pathways).
+ */
+export function buildGridOnly() {
+  buildGridOverlay();
+}
+
+/**
  * Rebuild only the zone overlay meshes (after zone painting changes).
  */
 export function rebuildZoneOverlays() {
@@ -226,37 +239,274 @@ function buildFloor() {
 // ---------------------------------------------------------------------------
 
 function buildGridOverlay() {
-  var gw = getGridWidth();
-  var gd = getGridDepth();
-  var cs = getCellSize();
+  // --- Shader-based infinite grid on a single large plane ---
+  var planeSize = 2000;
+  var geo = new THREE.PlaneGeometry(planeSize, planeSize);
 
-  var points = [];
-
-  // Horizontal lines (along X)
-  for (var z = 0; z <= gd; z++) {
-    points.push(0, 0.02, z * cs);
-    points.push(gw * cs, 0.02, z * cs);
-  }
-
-  // Vertical lines (along Z)
-  for (var x = 0; x <= gw; x++) {
-    points.push(x * cs, 0.02, 0);
-    points.push(x * cs, 0.02, gd * cs);
-  }
-
-  var geometry = new THREE.BufferGeometry();
-  geometry.setAttribute('position', new THREE.Float32BufferAttribute(points, 3));
-
-  var material = new THREE.LineBasicMaterial({
-    color: 0x555555,
+  gridShaderMaterial = new THREE.ShaderMaterial({
+    uniforms: {
+      uCamGround: { value: new THREE.Vector2(0, 0) },
+      uFadeStart: { value: 25.0 },
+      uFadeEnd:   { value: 55.0 },
+    },
+    vertexShader: [
+      'varying vec2 vWorldXZ;',
+      'void main() {',
+      '  vec4 wp = modelMatrix * vec4(position, 1.0);',
+      '  vWorldXZ = wp.xz;',
+      '  gl_Position = projectionMatrix * viewMatrix * wp;',
+      '}',
+    ].join('\n'),
+    fragmentShader: [
+      'varying vec2 vWorldXZ;',
+      'uniform vec2 uCamGround;',
+      'uniform float uFadeStart;',
+      'uniform float uFadeEnd;',
+      '',
+      'float gridLine(float coord, float width) {',
+      '  float d = abs(fract(coord + 0.5) - 0.5);',
+      '  float fw = fwidth(coord);',
+      '  return 1.0 - smoothstep(width - fw, width + fw, d);',
+      '}',
+      '',
+      'void main() {',
+      '  float dist = distance(vWorldXZ, uCamGround);',
+      '  float t = clamp((dist - uFadeStart) / (uFadeEnd - uFadeStart), 0.0, 1.0);',
+      '  float fade = 1.0 - t * t * (3.0 - 2.0 * t);',
+      '  if (fade < 0.005) discard;',
+      '',
+      '  // --- Thin lines (every 1 unit) ---',
+      '  float thinX = gridLine(vWorldXZ.x, 0.03);',
+      '  float thinZ = gridLine(vWorldXZ.y, 0.03);',
+      '  float thin = max(thinX, thinZ);',
+      '',
+      '  // --- Bold lines (every 10 units) ---',
+      '  float boldX = gridLine(vWorldXZ.x / 10.0, 0.004);',
+      '  float boldZ = gridLine(vWorldXZ.y / 10.0, 0.004);',
+      '  float bold = max(boldX, boldZ);',
+      '',
+      '  // --- Origin axes ---',
+      '  float axisXWidth = 0.06;',
+      '  float axisZWidth = 0.06;',
+      '  float fwX = fwidth(vWorldXZ.y);',
+      '  float fwZ = fwidth(vWorldXZ.x);',
+      '  float onAxisX = 1.0 - smoothstep(axisXWidth - fwX, axisXWidth + fwX, abs(vWorldXZ.y));',
+      '  float onAxisZ = 1.0 - smoothstep(axisZWidth - fwZ, axisZWidth + fwZ, abs(vWorldXZ.x));',
+      '',
+      '  // Compose color and alpha',
+      '  vec3 thinColor = vec3(0.30, 0.30, 0.30);',
+      '  vec3 boldColor = vec3(0.42, 0.42, 0.42);',
+      '  vec3 xAxisColor = vec3(1.0, 0.27, 0.27);',
+      '  vec3 zAxisColor = vec3(0.27, 0.53, 1.0);',
+      '',
+      '  vec3 col = thinColor;',
+      '  float alpha = thin * 0.25;',
+      '',
+      '  // Bold overwrites thin',
+      '  col = mix(col, boldColor, bold);',
+      '  alpha = max(alpha, bold * 0.4);',
+      '',
+      '  // X axis (z=0 line) overwrites',
+      '  col = mix(col, xAxisColor, onAxisX);',
+      '  alpha = max(alpha, onAxisX * 0.9);',
+      '',
+      '  // Z axis (x=0 line) overwrites',
+      '  col = mix(col, zAxisColor, onAxisZ);',
+      '  alpha = max(alpha, onAxisZ * 0.9);',
+      '',
+      '  alpha *= fade;',
+      '  if (alpha < 0.005) discard;',
+      '',
+      '  gl_FragColor = vec4(col, alpha);',
+      '}',
+    ].join('\n'),
     transparent: true,
-    opacity: 0.5,
+    depthWrite: false,
+    side: THREE.DoubleSide,
+    extensions: { derivatives: true },
   });
 
-  gridOverlayMesh = new THREE.LineSegments(geometry, material);
-  gridOverlayMesh.userData.visibilityCategory = 'zones';
+  var gridPlane = new THREE.Mesh(geo, gridShaderMaterial);
+  gridPlane.rotation.x = -Math.PI / 2;
+  gridPlane.position.set(0, 0.01, 0);
+  gridPlane.userData.visibilityCategory = 'zones';
 
-  addToScene(gridOverlayMesh);
+  gridOverlayMesh = gridPlane;
+  addToScene(gridPlane);
+
+  // --- Label system ---
+  gridLabelGroup = new THREE.Group();
+  addToScene(gridLabelGroup);
+
+  // Pre-allocate a pool of label sprites (enough for visible range)
+  // We'll show labels for every 10-unit mark within the fade radius
+  var poolSize = 60;  // plenty for both axes
+  for (var i = 0; i < poolSize; i++) {
+    var sprite = makeTextSprite('0', '#888888');
+    sprite.visible = false;
+    gridLabelGroup.add(sprite);
+    gridLabelPool.push(sprite);
+  }
+
+  // Fixed axis name labels
+  gridAxisLabels.xLabel = makeTextSprite('X →', '#ff4444', 1.2);
+  gridAxisLabels.xLabel.visible = false;
+  gridLabelGroup.add(gridAxisLabels.xLabel);
+
+  gridAxisLabels.zLabel = makeTextSprite('Z ↓', '#4488ff', 1.2);
+  gridAxisLabels.zLabel.visible = false;
+  gridLabelGroup.add(gridAxisLabels.zLabel);
+}
+
+
+// ---------------------------------------------------------------------------
+// Grid Focus Update — call each frame with camera ground position + height
+// ---------------------------------------------------------------------------
+
+/**
+ * Update the infinite grid fade and reposition axis labels around camera.
+ *
+ * @param {number} camX - Focus world X (camera orbit target)
+ * @param {number} camZ - Focus world Z (camera orbit target)
+ * @param {number} cameraHeight - Camera distance from orbit target (controls fade radius)
+ */
+export function updateGridFocus(camX, camZ, cameraHeight) {
+  if (!gridShaderMaterial) return;
+
+  var fadeStart = Math.max(16, cameraHeight * 0.70);
+  var fadeEnd   = Math.max(32, cameraHeight * 1.50);
+
+  // Update shader
+  gridShaderMaterial.uniforms.uCamGround.value.set(camX, camZ);
+  gridShaderMaterial.uniforms.uFadeStart.value = fadeStart;
+  gridShaderMaterial.uniforms.uFadeEnd.value = fadeEnd;
+
+  // --- Reposition labels around the camera ---
+  if (!gridLabelGroup) return;
+
+  var labelOffset = 1.8;
+  var poolIdx = 0;
+
+  // Hide all pool sprites first
+  for (var i = 0; i < gridLabelPool.length; i++) {
+    gridLabelPool[i].visible = false;
+  }
+
+  // Determine visible range for 10-unit marks
+  var range = fadeEnd + 5;
+  var minX = Math.floor((camX - range) / 10) * 10;
+  var maxX = Math.ceil((camX + range) / 10) * 10;
+  var minZ = Math.floor((camZ - range) / 10) * 10;
+  var maxZ = Math.ceil((camZ + range) / 10) * 10;
+
+  // X-axis labels (along z ≈ 0, offset slightly negative)
+  for (var x = minX; x <= maxX; x += 10) {
+    if (poolIdx >= gridLabelPool.length) break;
+    var dx = x - camX;
+    var dz = 0 - camZ;
+    var dist = Math.sqrt(dx * dx + dz * dz);
+    if (dist > fadeEnd) continue;
+
+    var sprite = gridLabelPool[poolIdx++];
+    updateSpriteText(sprite, String(x), x === 0 ? '#ffffff' : '#ff6666');
+    sprite.position.set(x, 0.1, -labelOffset);
+
+    var ft = Math.max(0, Math.min(1, (dist - fadeStart) / (fadeEnd - fadeStart)));
+    sprite.material.opacity = 1.0 - ft * ft * (3.0 - 2.0 * ft);
+    sprite.visible = sprite.material.opacity > 0.01;
+  }
+
+  // Z-axis labels (along x ≈ 0, offset slightly negative)
+  for (var z = minZ; z <= maxZ; z += 10) {
+    if (poolIdx >= gridLabelPool.length) break;
+    if (z === 0) continue; // origin covered by X label
+    var dx = 0 - camX;
+    var dz = z - camZ;
+    var dist = Math.sqrt(dx * dx + dz * dz);
+    if (dist > fadeEnd) continue;
+
+    var sprite = gridLabelPool[poolIdx++];
+    updateSpriteText(sprite, String(z), '#6699ff');
+    sprite.position.set(-labelOffset, 0.1, z);
+
+    var ft = Math.max(0, Math.min(1, (dist - fadeStart) / (fadeEnd - fadeStart)));
+    sprite.material.opacity = 1.0 - ft * ft * (3.0 - 2.0 * ft);
+    sprite.visible = sprite.material.opacity > 0.01;
+  }
+
+  // Pin axis name labels to the edge of the fade bubble along each axis
+  var bubbleEdge = fadeEnd * 0.9;  // slightly inside the edge so they're visible
+
+  // X label: sits on the X axis (z=0), at the positive edge of the bubble from focus
+  gridAxisLabels.xLabel.position.set(camX + bubbleEdge, 0.1, -labelOffset);
+  gridAxisLabels.xLabel.material.opacity = 0.7;
+  gridAxisLabels.xLabel.visible = true;
+
+  // Z label: sits on the Z axis (x=0), at the positive edge of the bubble from focus
+  gridAxisLabels.zLabel.position.set(-labelOffset, 0.1, camZ + bubbleEdge);
+  gridAxisLabels.zLabel.material.opacity = 0.7;
+  gridAxisLabels.zLabel.visible = true;
+}
+
+
+// ---------------------------------------------------------------------------
+// Text Sprite Helpers
+// ---------------------------------------------------------------------------
+
+function makeTextSprite(text, color, scaleMult) {
+  var canvas = document.createElement('canvas');
+  var size = 128;
+  canvas.width = size;
+  canvas.height = size;
+
+  var ctx = canvas.getContext('2d');
+  ctx.clearRect(0, 0, size, size);
+
+  ctx.font = 'bold 64px Consolas, monospace';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillStyle = color || '#ffffff';
+  ctx.fillText(text, size / 2, size / 2);
+
+  var texture = new THREE.CanvasTexture(canvas);
+  texture.minFilter = THREE.LinearFilter;
+
+  var mat = new THREE.SpriteMaterial({
+    map: texture,
+    transparent: true,
+    depthTest: false,
+  });
+
+  var sprite = new THREE.Sprite(mat);
+  var s = (scaleMult || 1.0) * 2.0;
+  sprite.scale.set(s, s, 1);
+
+  // Stash canvas ref for reuse
+  sprite.userData._canvas = canvas;
+  sprite.userData._text = text;
+  sprite.userData._color = color;
+
+  return sprite;
+}
+
+function updateSpriteText(sprite, text, color) {
+  // Skip redraw if text and color haven't changed
+  if (sprite.userData._text === text && sprite.userData._color === color) return;
+
+  var canvas = sprite.userData._canvas;
+  if (!canvas) return;
+  var size = canvas.width;
+  var ctx = canvas.getContext('2d');
+  ctx.clearRect(0, 0, size, size);
+  ctx.font = 'bold 64px Consolas, monospace';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillStyle = color || '#ffffff';
+  ctx.fillText(text, size / 2, size / 2);
+
+  sprite.material.map.needsUpdate = true;
+  sprite.userData._text = text;
+  sprite.userData._color = color;
 }
 
 

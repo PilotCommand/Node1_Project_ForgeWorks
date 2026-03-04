@@ -161,7 +161,7 @@
 
   <!-- Application entry point -->
   <script type="module">
-    import { init, submitOrder, setMode, getMode } from './infrastructure/mainlogic.js';
+    import { init } from './infrastructure/mainlogic.js';
 
     // Initialize the application
     const container = document.getElementById('forge-container');
@@ -171,7 +171,7 @@
 
     try {
       init(container, {
-        layout: 'coulter',
+        layout: 'empty',
         seed: 42,
         displaySystem: 'si',
       });
@@ -184,40 +184,8 @@
         }, 500);
       }, 300);
 
-      // Expose key functions to the browser console for testing
-      window.forgeworks = {
-        submitOrder: submitOrder,
-        setMode: setMode,
-        getMode: getMode,
-
-        // Quick test: submit a 5-piece order
-        testOrder: function() {
-          return submitOrder({
-            materialGrade: '4140',
-            quantity: 5,
-            weight: 45,
-            dimensions: { length: 0.5, width: 0.15, height: 0.15 },
-          });
-        },
-
-        // Quick test: submit a larger batch
-        testBatch: function() {
-          return submitOrder({
-            materialGrade: '4140',
-            quantity: 20,
-            weight: 45,
-            dimensions: { length: 0.5, width: 0.15, height: 0.15 },
-          });
-        },
-      };
-
       console.log('%c FORGEWORKS ', 'background: #ff8800; color: #000; font-weight: bold; font-size: 14px; padding: 4px 8px;');
-      console.log('Digital forge twin initialized.');
-      console.log('Console commands:');
-      console.log('  forgeworks.testOrder()   — Submit a 5-piece test order');
-      console.log('  forgeworks.testBatch()   — Submit a 20-piece batch');
-      console.log('  forgeworks.setMode("prediction") — Switch to prediction mode');
-      console.log('  forgeworks.setMode("sandbox")    — Switch to sandbox mode');
+      console.log('Digital forge twin initialized (empty grid).');
 
     } catch (err) {
       console.error('Forgeworks initialization failed:', err);
