@@ -47,6 +47,8 @@ let modeFlash = null;
 let modeFlashTimeout = null;
 let modeControlsPanel = null;
 let modeInfoPanel = null;
+let transformPanel = null;
+let transformCallback = null;
 let registryPanel = null;
 let registryActiveTab = 'zones';
 let worldClockPanel = null;
@@ -60,6 +62,7 @@ let registryData = {
   products: [],
 };
 let registryFilter = '';
+let selectedRegistryItemId = null;
 let menuPanel = null;
 
 // Grid dimensions (set during init)
@@ -1119,6 +1122,297 @@ export function setInfoContent(data) {
 }
 
 // ---------------------------------------------------------------------------
+// Transform Panel — center-right, positional & rotational info for build mode
+// ---------------------------------------------------------------------------
+
+function ensureTransformPanel() {
+  if (transformPanel) return;
+
+  transformPanel = document.createElement('div');
+  transformPanel.id = 'transform-panel';
+  transformPanel.className = 'hud-panel';
+  Object.assign(transformPanel.style, {
+    top: '50%',
+    right: '10px',
+    width: '240px',
+    left: 'auto',
+    bottom: 'auto',
+    transform: 'translateY(-50%)',
+    transition: 'border-color 0.3s ease',
+    background: 'rgba(0, 10, 20, 0.7)',
+    backdropFilter: 'blur(4px)',
+    transformOrigin: 'center right',
+  });
+
+  // Title bar
+  var title = document.createElement('div');
+  title.className = 'hud-title';
+  title.style.transition = 'color 0.3s ease, border-bottom-color 0.3s ease';
+  title.innerHTML = titleBarHTML('Transform');
+  transformPanel.appendChild(title);
+
+  // Collapsible content
+  var content = document.createElement('div');
+  content.className = 'hud-collapsible';
+  content.id = 'transform-content';
+  content.style.padding = '8px 10px';
+  transformPanel.appendChild(content);
+
+  container.appendChild(transformPanel);
+
+  makeDraggable(transformPanel);
+  makeCollapsible(transformPanel);
+  makeResizable(transformPanel);
+
+  // Font scaling
+  var currentScale = 1.0;
+  var minScale = 0.7;
+  var maxScale = 1.5;
+  var stepScale = 0.1;
+
+  var decreaseBtn = transformPanel.querySelector('.font-decrease');
+  var increaseBtn = transformPanel.querySelector('.font-increase');
+
+  if (decreaseBtn) {
+    decreaseBtn.addEventListener('click', function(e) {
+      e.stopPropagation();
+      if (currentScale > minScale) {
+        currentScale = Math.round((currentScale - stepScale) * 10) / 10;
+        transformPanel.style.transform = 'translateY(-50%) scale(' + currentScale + ')';
+      }
+    });
+  }
+  if (increaseBtn) {
+    increaseBtn.addEventListener('click', function(e) {
+      e.stopPropagation();
+      if (currentScale < maxScale) {
+        currentScale = Math.round((currentScale + stepScale) * 10) / 10;
+        transformPanel.style.transform = 'translateY(-50%) scale(' + currentScale + ')';
+      }
+    });
+  }
+
+  setTransformContent(null);
+}
+
+function updateTransformPanelTheme(mode) {
+  ensureTransformPanel();
+
+  var cfg = MODE_CONFIG[mode] || MODE_CONFIG.build;
+
+  // Dynamic pseudo-element styles
+  var styleId = 'transform-panel-dynamic-style';
+  var dynStyle = document.getElementById(styleId);
+  if (!dynStyle) {
+    dynStyle = document.createElement('style');
+    dynStyle.id = styleId;
+    document.head.appendChild(dynStyle);
+  }
+  dynStyle.textContent =
+    '#transform-panel .resize-handle::before {' +
+    '  border-right-color: ' + cfg.color + ' !important;' +
+    '  border-bottom-color: ' + cfg.color + ' !important;' +
+    '}' +
+    '#transform-panel:hover { border-color: ' + cfg.color + '66 !important; }';
+
+  transformPanel.style.borderColor = cfg.color + '33';
+  transformPanel.style.borderRight = '2px solid ' + cfg.color;
+
+  var titleBar = transformPanel.querySelector('.hud-title');
+  if (titleBar) {
+    titleBar.style.color = cfg.color;
+    titleBar.style.borderBottomColor = cfg.color + '33';
+    titleBar.style.background = 'rgba(0, 8, 16, 0.5)';
+
+    var btns = titleBar.querySelectorAll('.font-btn, .collapse-btn, .grip');
+    for (var b = 0; b < btns.length; b++) {
+      btns[b].style.color = cfg.color;
+    }
+  }
+
+  // Only show in build mode
+  transformPanel.style.display = (mode === 'build') ? '' : 'none';
+}
+
+/**
+ * Update the transform panel content.
+ * Pass null to show the empty state.
+ * Pass an object:
+ *   { id, name, x, z, rotation, width, depth, canRotate }
+ *
+ * @param {object|null} data
+ */
+export function setTransformContent(data) {
+  ensureTransformPanel();
+
+  var content = document.getElementById('transform-content');
+  if (!content) return;
+
+  if (!data) {
+    content.innerHTML =
+      '<div style="color:#556677;font-style:italic;padding:8px 0;text-align:center;font-size:11px;">' +
+      'Select an object to transform' +
+      '</div>';
+    return;
+  }
+
+  var accentColor = '#ff8800';
+  var html = '';
+
+  // Header
+  html += '<div style="display:flex;justify-content:space-between;padding:2px 0 6px 0;border-bottom:1px solid rgba(255,255,255,0.06);margin-bottom:8px;">';
+  html += '<span style="color:#ddeeff;font-size:12px;font-weight:600;">' + (data.name || data.id) + '</span>';
+  html += '<span style="color:#667788;font-size:10px;font-family:monospace;">' + (data.id || '') + '</span>';
+  html += '</div>';
+
+  // --- Position Section ---
+  html += '<div style="margin-bottom:10px;">';
+  html += '<div style="color:#667788;font-size:9px;text-transform:uppercase;letter-spacing:1px;margin-bottom:5px;">Position</div>';
+
+  // X row
+  html += '<div style="display:flex;align-items:center;gap:6px;margin-bottom:4px;">';
+  html += '<span style="color:' + accentColor + ';font-size:11px;font-weight:600;width:14px;">X</span>';
+  html += '<input id="tf-pos-x" type="number" value="' + (data.x != null ? data.x : 0) + '" style="' + transformInputStyle() + '" />';
+  html += '<span style="color:#445566;font-size:9px;">cells</span>';
+  html += '</div>';
+
+  // Z row
+  html += '<div style="display:flex;align-items:center;gap:6px;margin-bottom:4px;">';
+  html += '<span style="color:' + accentColor + ';font-size:11px;font-weight:600;width:14px;">Z</span>';
+  html += '<input id="tf-pos-z" type="number" value="' + (data.z != null ? data.z : 0) + '" style="' + transformInputStyle() + '" />';
+  html += '<span style="color:#445566;font-size:9px;">cells</span>';
+  html += '</div>';
+
+  html += '</div>';
+
+  // --- Rotation Section ---
+  html += '<div style="margin-bottom:10px;">';
+  html += '<div style="color:#667788;font-size:9px;text-transform:uppercase;letter-spacing:1px;margin-bottom:5px;">Rotation (Y-Axis)</div>';
+
+  var rot = data.rotation != null ? data.rotation : 0;
+
+  html += '<div style="display:flex;align-items:center;gap:6px;">';
+  html += '<button id="tf-rot-ccw" style="' + transformBtnStyle(accentColor) + '" title="Rotate −90°">↺</button>';
+  html += '<input id="tf-rot-y" type="number" value="' + rot + '" step="90" style="' + transformInputStyle() + 'text-align:center;" />';
+  html += '<button id="tf-rot-cw" style="' + transformBtnStyle(accentColor) + '" title="Rotate +90°">↻</button>';
+  html += '<span style="color:#445566;font-size:9px;min-width:14px;">deg</span>';
+  html += '</div>';
+
+  // Rotation visual indicator
+  html += '<div style="display:flex;justify-content:center;margin-top:8px;">';
+  html += '<div id="tf-rot-compass" style="position:relative;width:48px;height:48px;">';
+  html += '<svg viewBox="0 0 48 48" width="48" height="48">';
+  // Ring
+  html += '<circle cx="24" cy="24" r="20" fill="none" stroke="#223344" stroke-width="1.5"/>';
+  // Cardinal ticks
+  html += '<line x1="24" y1="4" x2="24" y2="8" stroke="#445566" stroke-width="1"/>';
+  html += '<line x1="44" y1="24" x2="40" y2="24" stroke="#445566" stroke-width="1"/>';
+  html += '<line x1="24" y1="44" x2="24" y2="40" stroke="#445566" stroke-width="1"/>';
+  html += '<line x1="4" y1="24" x2="8" y2="24" stroke="#445566" stroke-width="1"/>';
+  // Direction arrow (rotated)
+  var arrowRot = rot;
+  html += '<g transform="rotate(' + arrowRot + ' 24 24)">';
+  html += '<line x1="24" y1="24" x2="24" y2="8" stroke="' + accentColor + '" stroke-width="2" stroke-linecap="round"/>';
+  html += '<polygon points="24,6 21,12 27,12" fill="' + accentColor + '"/>';
+  html += '</g>';
+  // Center dot
+  html += '<circle cx="24" cy="24" r="2.5" fill="' + accentColor + '"/>';
+  html += '</svg>';
+  html += '</div>';
+  html += '</div>';
+
+  html += '</div>';
+
+  // --- Size Section (if available) ---
+  if (data.width != null && data.depth != null) {
+    html += '<div style="border-top:1px solid rgba(255,255,255,0.06);padding-top:8px;">';
+    html += '<div style="color:#667788;font-size:9px;text-transform:uppercase;letter-spacing:1px;margin-bottom:5px;">Footprint</div>';
+    html += '<div style="display:flex;justify-content:space-between;">';
+    html += '<span style="color:#667788;font-size:11px;">Width × Depth</span>';
+    html += '<span style="color:#aabbcc;font-size:11px;font-family:monospace;">' + data.width + ' × ' + data.depth + '</span>';
+    html += '</div>';
+    html += '</div>';
+  }
+
+  content.innerHTML = html;
+
+  // --- Wire up interactive inputs ---
+  var posXInput = document.getElementById('tf-pos-x');
+  var posZInput = document.getElementById('tf-pos-z');
+  var rotYInput = document.getElementById('tf-rot-y');
+  var rotCCWBtn = document.getElementById('tf-rot-ccw');
+  var rotCWBtn = document.getElementById('tf-rot-cw');
+
+  function fireChange() {
+    if (!transformCallback) return;
+    var newX = posXInput ? parseInt(posXInput.value, 10) : data.x;
+    var newZ = posZInput ? parseInt(posZInput.value, 10) : data.z;
+    var newRot = rotYInput ? parseInt(rotYInput.value, 10) : data.rotation;
+    // Normalize rotation to 0–359
+    newRot = ((newRot % 360) + 360) % 360;
+    if (rotYInput) rotYInput.value = newRot;
+    transformCallback({ id: data.id, x: newX, z: newZ, rotation: newRot });
+  }
+
+  if (posXInput) posXInput.addEventListener('change', fireChange);
+  if (posZInput) posZInput.addEventListener('change', fireChange);
+  if (rotYInput) rotYInput.addEventListener('change', function() {
+    // Update compass
+    var v = parseInt(rotYInput.value, 10) || 0;
+    v = ((v % 360) + 360) % 360;
+    rotYInput.value = v;
+    updateCompassArrow(v, accentColor);
+    fireChange();
+  });
+
+  if (rotCCWBtn) rotCCWBtn.addEventListener('click', function() {
+    var v = parseInt(rotYInput.value, 10) || 0;
+    v = ((v - 90) % 360 + 360) % 360;
+    rotYInput.value = v;
+    updateCompassArrow(v, accentColor);
+    fireChange();
+  });
+  if (rotCWBtn) rotCWBtn.addEventListener('click', function() {
+    var v = parseInt(rotYInput.value, 10) || 0;
+    v = ((v + 90) % 360 + 360) % 360;
+    rotYInput.value = v;
+    updateCompassArrow(v, accentColor);
+    fireChange();
+  });
+}
+
+function updateCompassArrow(deg, color) {
+  var compass = document.getElementById('tf-rot-compass');
+  if (!compass) return;
+  var svg = compass.querySelector('svg');
+  if (!svg) return;
+  var g = svg.querySelector('g');
+  if (g) g.setAttribute('transform', 'rotate(' + deg + ' 24 24)');
+}
+
+function transformInputStyle() {
+  return 'flex:1;background:rgba(0,10,20,0.8);border:1px solid #223344;border-radius:3px;' +
+    'color:#aabbcc;font-family:monospace;font-size:11px;padding:3px 6px;outline:none;' +
+    'width:0;min-width:0;';
+}
+
+function transformBtnStyle(color) {
+  return 'background:rgba(0,10,20,0.8);border:1px solid ' + color + '44;border-radius:3px;' +
+    'color:' + color + ';font-size:14px;width:28px;height:24px;cursor:pointer;' +
+    'display:flex;align-items:center;justify-content:center;padding:0;';
+}
+
+/**
+ * Register a callback that fires when the user edits transform values.
+ * Callback receives: { id, x, z, rotation }
+ *
+ * @param {function} callback
+ */
+export function onTransformChange(callback) {
+  transformCallback = callback;
+}
+
+// ---------------------------------------------------------------------------
 // Registry Panel — top-right, master directory of all world objects
 // ---------------------------------------------------------------------------
 
@@ -1281,6 +1575,8 @@ function buildRegistryTabs() {
       btn.addEventListener('click', function() {
         registryActiveTab = tab.key;
         registryFilter = '';
+        selectedRegistryItemId = null;
+        setInfoContent(null);
         var filterInput = document.getElementById('registry-filter');
         if (filterInput) filterInput.value = '';
         highlightActiveTab();
@@ -1348,6 +1644,7 @@ function renderRegistryList() {
   for (var i = 0; i < filtered.length; i++) {
     var item = filtered[i];
     var itemColor = item.color || accentColor;
+    var isSelected = item.id === selectedRegistryItemId;
     var statusDot = '';
     if (item.status) {
       var dotColor = item.status === 'active' ? '#44cc66' :
@@ -1356,14 +1653,16 @@ function renderRegistryList() {
       statusDot = '<span style="display:inline-block;width:6px;height:6px;border-radius:50%;background:' + dotColor + ';margin-right:4px;"></span>';
     }
 
-    html += '<div class="registry-item" data-id="' + item.id + '" style="' +
+    var selectedBg = isSelected ? 'rgba(255,255,255,0.06)' : 'transparent';
+    var selectedBorder = isSelected ? itemColor : 'transparent';
+
+    html += '<div class="registry-item" data-id="' + item.id + '" data-color="' + itemColor + '" style="' +
       'display:flex;justify-content:space-between;align-items:center;padding:4px 8px;cursor:pointer;' +
-      'transition:background 0.15s ease;border-left:2px solid transparent;' +
-      '" onmouseenter="this.style.background=\'rgba(255,255,255,0.04)\';this.style.borderLeftColor=\'' + itemColor + '\';" ' +
-      'onmouseleave="this.style.background=\'transparent\';this.style.borderLeftColor=\'transparent\';">' +
+      'transition:background 0.15s ease;border-left:2px solid ' + selectedBorder + ';' +
+      'background:' + selectedBg + ';">' +
 
       '<div style="display:flex;flex-direction:column;gap:1px;overflow:hidden;">' +
-        '<span style="color:#aabbcc;font-size:11px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">' +
+        '<span style="color:' + (isSelected ? '#ddeeff' : '#aabbcc') + ';font-size:11px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">' +
           statusDot + item.label +
         '</span>' +
         '<span style="color:#445566;font-size:9px;font-family:monospace;">' + item.id + (item.type ? ' · ' + item.type : '') + '</span>' +
@@ -1376,13 +1675,29 @@ function renderRegistryList() {
 
   list.innerHTML = html;
 
-  // Wire up click handlers
+  // Wire up click and hover handlers
   var rows = list.querySelectorAll('.registry-item');
   for (var r = 0; r < rows.length; r++) {
-    rows[r].addEventListener('click', function() {
-      var itemId = this.dataset.id;
-      onRegistryItemClick(itemId, registryActiveTab);
-    });
+    (function(row) {
+      var rowColor = row.dataset.color;
+      var rowId = row.dataset.id;
+
+      row.addEventListener('mouseenter', function() {
+        if (rowId !== selectedRegistryItemId) {
+          row.style.background = 'rgba(255,255,255,0.04)';
+          row.style.borderLeftColor = rowColor;
+        }
+      });
+      row.addEventListener('mouseleave', function() {
+        if (rowId !== selectedRegistryItemId) {
+          row.style.background = 'transparent';
+          row.style.borderLeftColor = 'transparent';
+        }
+      });
+      row.addEventListener('click', function() {
+        onRegistryItemClick(rowId, registryActiveTab);
+      });
+    })(rows[r]);
   }
 
   if (summary) {
@@ -1392,7 +1707,49 @@ function renderRegistryList() {
 
 function onRegistryItemClick(itemId, category) {
   console.log('Registry click:', category, itemId);
-  // Will wire up to selection / info panel later
+
+  // Find the item in the registry data
+  var items = registryData[category] || [];
+  var item = null;
+  for (var i = 0; i < items.length; i++) {
+    if (items[i].id === itemId) {
+      item = items[i];
+      break;
+    }
+  }
+  if (!item) return;
+
+  // Track selection and re-render to show highlight
+  selectedRegistryItemId = itemId;
+  renderRegistryList();
+
+  // Build info panel content from the item
+  var categoryLabels = {
+    zones: 'zone',
+    stationary: 'equipment',
+    mobile: 'mobile',
+    products: 'product',
+  };
+
+  var infoData = {
+    type: categoryLabels[category] || category,
+    id: item.id,
+    name: item.label || item.id,
+    properties: [],
+    status: item.status || null,
+  };
+
+  // Use item's own properties array if provided (rich data from the builder)
+  if (item.properties && item.properties.length) {
+    infoData.properties = item.properties;
+  } else {
+    // Fallback: build properties from whatever fields are available
+    if (item.type) {
+      infoData.properties.push({ label: 'Type', value: item.type });
+    }
+  }
+
+  setInfoContent(infoData);
 }
 
 function updateRegistryPanelTheme(mode) {
@@ -1448,7 +1805,8 @@ function updateRegistryPanelTheme(mode) {
 
 /**
  * Push data into a registry tab.
- * Items should be: [{ id, label, type?, color?, status? }]
+ * Items should be: [{ id, label, type?, color?, status?, properties?: [{label, value}] }]
+ * The optional `properties` array provides detailed info for the Information panel.
  *
  * @param {string} category - 'zones', 'stationary', 'mobile', or 'products'
  * @param {object[]} items
@@ -1456,6 +1814,20 @@ function updateRegistryPanelTheme(mode) {
 export function setRegistryData(category, items) {
   registryData[category] = items || [];
   if (registryActiveTab === category) {
+    // If the selected item no longer exists in the updated data, clear the selection
+    if (selectedRegistryItemId) {
+      var found = false;
+      for (var i = 0; i < registryData[category].length; i++) {
+        if (registryData[category][i].id === selectedRegistryItemId) {
+          found = true;
+          break;
+        }
+      }
+      if (!found) {
+        selectedRegistryItemId = null;
+        setInfoContent(null);
+      }
+    }
     renderRegistryList();
   }
 }
@@ -1485,6 +1857,17 @@ export function refreshZoneRegistry(allZones) {
  */
 export function getRegistryActiveTab() {
   return registryActiveTab;
+}
+
+/**
+ * Select an item in the registry panel by ID (highlights the row).
+ * Pass null to clear the selection.
+ *
+ * @param {string|null} itemId
+ */
+export function selectRegistryItem(itemId) {
+  selectedRegistryItemId = itemId;
+  renderRegistryList();
 }
 
 // ---------------------------------------------------------------------------
@@ -1933,6 +2316,9 @@ export function showModeIndicator(mode) {
 
   // Update info panel theme
   updateInfoPanelTheme(mode);
+
+  // Update transform panel theme (also handles build-mode-only visibility)
+  updateTransformPanelTheme(mode);
 
   // Update registry panel theme
   updateRegistryPanelTheme(mode);
