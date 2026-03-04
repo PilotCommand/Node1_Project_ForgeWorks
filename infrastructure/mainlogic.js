@@ -61,7 +61,7 @@ import * as metalpart from '../production_entities/product_metalpart.js';
 // ---------------------------------------------------------------------------
 
 let currentMode = 'spectate';   // build, select, spectate
-let MODES = ['build', 'select', 'spectate'];
+let MODES = ['spectate', 'select', 'build'];
 let MODE_MODULES = {
   build: modeBuild,
   select: modeSelect,
