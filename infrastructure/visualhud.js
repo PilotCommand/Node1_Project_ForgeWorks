@@ -64,6 +64,7 @@ let registryData = {
 let registryFilter = '';
 let selectedRegistryItemId = null;
 let menuPanel = null;
+let menuClickCallback = null;
 
 // Grid dimensions (set during init)
 let gridW = 60;
@@ -764,7 +765,7 @@ function ensureMenuPanel() {
 
 function onMenuItemClick(key) {
   console.log('Menu:', key);
-  // Will navigate to sub-pages later
+  if (menuClickCallback) menuClickCallback(key);
 }
 
 function updateMenuPanelTheme(mode) {
@@ -804,6 +805,14 @@ function updateMenuPanelTheme(mode) {
       btns[b].style.color = cfg.color;
     }
   }
+}
+
+/**
+ * Register a callback for menu panel item clicks.
+ * @param {function} callback - function(key) where key is the menu item key
+ */
+export function onMenuClick(callback) {
+  menuClickCallback = callback;
 }
 
 // ---------------------------------------------------------------------------

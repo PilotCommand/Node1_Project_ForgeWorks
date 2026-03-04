@@ -29,6 +29,11 @@ import * as gridsquare from './gridsquare.js';
 import * as builder from './forgehousebuilder.js';
 import * as changer from './forgehousechanger.js';
 import * as dispatcher from './dispatcher.js';
+import * as mainmenu from './mainmenu.js';
+import * as purchaseorders from './purchaseorders.js';
+import * as generalinventory from './generalinventory.js';
+import * as maintenanceschedule from './maintenanceschedule.js';
+import * as documentprotocols from './documentprotocols.js';
 
 // --- Modes ---
 import * as modeBuild from './mode_build.js';
@@ -69,13 +74,18 @@ let MODE_MODULES = {
 };
 let isInitialized = false;
 let isPredictionRunning = false;
+let forgeStarted = false;
+let storedContainer = null;
+let storedOptions = null;
 
 // ---------------------------------------------------------------------------
 // Initialization
 // ---------------------------------------------------------------------------
 
 /**
- * Initialize the entire Forgeworks application.
+ * Initialize the Forgeworks application.
+ * Shows the main menu landing page. The 3D forge world is not loaded until
+ * the user clicks "Monitor Forge".
  *
  * @param {HTMLElement} container - DOM element to mount the 3D canvas
  * @param {object} [options] - Configuration options:
@@ -84,7 +94,40 @@ let isPredictionRunning = false;
  *   - displaySystem: 'si' or 'imperial' (default 'si')
  */
 export function init(container, options) {
-  var opts = options || {};
+  storedContainer = container;
+  storedOptions = options || {};
+
+  // Hide the 3D container until forge is started
+  container.style.display = 'none';
+
+  // Wire main menu navigation
+  mainmenu.onNavigate(handleNavigation);
+
+  // Wire sub-page back buttons
+  purchaseorders.onBack(returnToMenu);
+  generalinventory.onBack(returnToMenu);
+  maintenanceschedule.onBack(returnToMenu);
+  documentprotocols.onBack(returnToMenu);
+
+  // Show the main menu
+  mainmenu.show();
+
+  isInitialized = true;
+  console.log('Forgeworks initialized — main menu displayed.');
+}
+
+/**
+ * Start the 3D forge world. Called when user selects "Monitor Forge".
+ * This does the heavy lifting that the old init() used to do immediately.
+ */
+function startForge() {
+  if (forgeStarted) {
+    // Already initialized — just show the container
+    storedContainer.style.display = '';
+    return;
+  }
+
+  var opts = storedOptions;
 
   // 1. Configure infrastructure
   randnumerics.setSeed(opts.seed || 42);
@@ -99,10 +142,11 @@ export function init(container, options) {
   }
   gridsquare.loadLayout(layoutConfig);
 
-  // 3. Initialize renderer and HUD
+  // 3. Show container and initialize renderer + HUD
+  storedContainer.style.display = '';
   var gridW = gridsquare.getGridWidth();
   var gridD = gridsquare.getGridDepth();
-  visualhud.initRenderer(container, gridW, gridD);
+  visualhud.initRenderer(storedContainer, gridW, gridD);
 
   // 4. Initialize builder with scene reference
   builder.initBuilder(visualhud.getScene());
@@ -110,7 +154,7 @@ export function init(container, options) {
   // 5. Build only the grid overlay (no floor, no walls)
   builder.buildGridOnly();
 
-  // 6. Start the render loop — update grid fade and active mode each frame
+  // 6. Start the render loop
   visualhud.startRenderLoop(function() {
     var target = controls.getTarget();
     var dist = controls.getDistance();
@@ -118,7 +162,6 @@ export function init(container, options) {
       builder.updateGridFocus(target.x, target.z, dist);
     }
 
-    // Tick active mode
     var dt = worldclock.getDelta();
     MODE_MODULES[currentMode].update(dt);
   });
@@ -126,17 +169,107 @@ export function init(container, options) {
   // 7. Set up mode cycling (spacebar)
   window.addEventListener('keydown', function(e) {
     if (e.code === 'Space' && !e.repeat) {
+      if (mainmenu.isVisible() || purchaseorders.isVisible() || generalinventory.isVisible() || maintenanceschedule.isVisible() || documentprotocols.isVisible()) return;
       e.preventDefault();
       cycleMode();
     }
   });
 
-  // 8. Activate starting mode and show indicator
+  // 8. Wire the HUD menu panel click to navigate back
+  visualhud.onMenuClick(handleMenuClick);
+
+  // 9. Activate starting mode
   MODE_MODULES[currentMode].activate();
   visualhud.showModeIndicator(currentMode);
 
-  isInitialized = true;
-  console.log('Forgeworks initialized. Grid: ' + gridW + 'x' + gridD + ', Layout: ' + layoutConfig.name);
+  forgeStarted = true;
+  console.log('Forge started. Grid: ' + gridW + 'x' + gridD + ', Layout: ' + layoutConfig.name);
+}
+
+// ---------------------------------------------------------------------------
+// Navigation
+// ---------------------------------------------------------------------------
+
+/**
+ * Handle navigation from the main menu landing page.
+ * @param {string} key - Navigation item key
+ */
+function handleNavigation(key) {
+  console.log('Navigate:', key);
+
+  // Hide all pages first
+  hideAllPages();
+
+  if (key === 'monitor_forge') {
+    startForge();
+    return;
+  }
+
+  if (key === 'purchase_orders') {
+    mainmenu.hide();
+    purchaseorders.show();
+    return;
+  }
+
+  if (key === 'general_inventory') {
+    mainmenu.hide();
+    generalinventory.show();
+    return;
+  }
+
+  if (key === 'maintenance_schedule') {
+    mainmenu.hide();
+    maintenanceschedule.show();
+    return;
+  }
+
+  if (key === 'document_protocols') {
+    mainmenu.hide();
+    documentprotocols.show();
+    return;
+  }
+
+  // Other pages — for now just log
+  console.log('Page not yet implemented:', key);
+}
+
+/**
+ * Handle clicks on the HUD menu panel (inside the 3D view).
+ * @param {string} key - Menu item key
+ */
+function handleMenuClick(key) {
+  if (key === 'main_menu') {
+    returnToMenu();
+    return;
+  }
+
+  // Navigating to a sub-page from the forge — hide the 3D container
+  storedContainer.style.display = 'none';
+  handleNavigation(key);
+}
+
+/**
+ * Return to the main menu from any page.
+ */
+function returnToMenu() {
+  // Hide forge if active
+  storedContainer.style.display = 'none';
+
+  // Hide all sub-pages
+  hideAllPages();
+
+  // Show the main menu
+  mainmenu.show();
+}
+
+/**
+ * Hide all sub-page overlays.
+ */
+function hideAllPages() {
+  purchaseorders.hide();
+  generalinventory.hide();
+  maintenanceschedule.hide();
+  documentprotocols.hide();
 }
 
 // ---------------------------------------------------------------------------
@@ -490,6 +623,11 @@ export {
   dispatcher,
   powerutilities,
   randnumerics,
+  mainmenu,
+  purchaseorders,
+  generalinventory,
+  maintenanceschedule,
+  documentprotocols,
   staticRegistry,
   mobileRegistry,
   productRegistry,
