@@ -96,6 +96,7 @@ let statsPanel = null;
 let modeIndicator = null;
 let modeIndicatorTimeout = null;
 let modeFlash = null;
+let modeControlsPanel = null;
 
 // HUD internal references
 let modeSelector = null;
@@ -229,14 +230,14 @@ export function initRenderer(containerElement, gw, gd) {
   statsPanel.showPanel(0);
   statsPanel.dom.style.position = 'absolute';
   statsPanel.dom.style.left = '0px';
-  statsPanel.dom.style.bottom = '0px';
-  statsPanel.dom.style.top = 'auto';
+  statsPanel.dom.style.top = '0px';
+  statsPanel.dom.style.bottom = 'auto';
   statsPanel.dom.style.margin = '0';
   container.appendChild(statsPanel.dom);
 
-  // HUD — disabled for now (clean grid view)
-  // createStyles();
-  // buildHUD();
+  // HUD styles (for mode controls panel)
+  createStyles();
+  // buildHUD();  — old panels disabled for clean grid view
   hudInitialized = false;
 
   // Window resize
@@ -830,10 +831,17 @@ function makeDraggable(panel) {
     startLeft = rect.left;
     startTop = rect.top;
 
-    // Switch to absolute left/top positioning
+    // Switch to absolute left/top positioning, preserving any scale
     panel.style.right = 'auto';
     panel.style.bottom = 'auto';
-    panel.style.transform = 'none';
+
+    var currentTransform = panel.style.transform || '';
+    var scaleMatch = currentTransform.match(/scale\(([^)]+)\)/);
+    var scale = scaleMatch ? parseFloat(scaleMatch[1]) : 1;
+
+    // Use top-left origin so left/top aligns with visual position
+    panel.style.transformOrigin = 'top left';
+    panel.style.transform = scaleMatch ? scaleMatch[0] : 'none';
     panel.style.left = startLeft + 'px';
     panel.style.top = startTop + 'px';
 
@@ -1578,6 +1586,160 @@ var MODE_CONFIG = {
   spectate: { label: 'SPECTATE', color: '#6699ff', icon: '👁' },
 };
 
+var MODE_CONTROLS = {
+  build: [
+    { key: 'Left Click',       desc: 'Drag to select rectangle' },
+    { key: 'Shift + Click',    desc: 'Add to selection' },
+    { key: 'Right Click',      desc: 'Open build menu' },
+    { key: 'Scroll',           desc: 'Zoom in / out' },
+    { key: 'Middle Drag',      desc: 'Zoom' },
+    { key: 'Space',            desc: 'Cycle mode' },
+  ],
+  select: [
+    { key: 'Left Click',       desc: 'Select object' },
+    { key: 'Scroll',           desc: 'Zoom in / out' },
+    { key: 'Left Drag',        desc: 'Orbit camera' },
+    { key: 'Right Drag',       desc: 'Pan camera' },
+    { key: 'Space',            desc: 'Cycle mode' },
+  ],
+  spectate: [
+    { key: 'Left Drag',        desc: 'Orbit camera' },
+    { key: 'Right Drag',       desc: 'Pan camera' },
+    { key: 'Scroll',           desc: 'Zoom in / out' },
+    { key: 'Space',            desc: 'Cycle mode' },
+  ],
+};
+
+// ---------------------------------------------------------------------------
+// Controls Panel — bottom-left, shows keybindings per mode
+// ---------------------------------------------------------------------------
+
+function ensureControlsPanel() {
+  if (modeControlsPanel) return;
+
+  modeControlsPanel = document.createElement('div');
+  modeControlsPanel.id = 'mode-controls-panel';
+  modeControlsPanel.className = 'hud-panel';
+  Object.assign(modeControlsPanel.style, {
+    bottom: '10px',
+    left: '10px',
+    width: '240px',
+    right: 'auto',
+    top: 'auto',
+    transition: 'border-color 0.3s ease',
+    background: 'rgba(0, 10, 20, 0.7)',
+    backdropFilter: 'blur(4px)',
+    transformOrigin: 'bottom left',
+  });
+
+  // Title bar
+  var title = document.createElement('div');
+  title.className = 'hud-title';
+  title.innerHTML = titleBarHTML('Controls');
+  modeControlsPanel.appendChild(title);
+
+  // Collapsible content
+  var content = document.createElement('div');
+  content.className = 'hud-collapsible';
+  content.id = 'mode-controls-content';
+  content.style.padding = '8px 10px';
+  modeControlsPanel.appendChild(content);
+
+  container.appendChild(modeControlsPanel);
+
+  // Wire up panel features
+  makeDraggable(modeControlsPanel);
+  makeCollapsible(modeControlsPanel);
+  makeResizable(modeControlsPanel);
+
+  // Font scaling — targets the entire panel, not just content
+  var currentScale = 1.0;
+  var minScale = 0.7;
+  var maxScale = 1.5;
+  var stepScale = 0.1;
+
+  var decreaseBtn = modeControlsPanel.querySelector('.font-decrease');
+  var increaseBtn = modeControlsPanel.querySelector('.font-increase');
+
+  if (decreaseBtn) {
+    decreaseBtn.addEventListener('click', function(e) {
+      e.stopPropagation();
+      if (currentScale > minScale) {
+        currentScale = Math.round((currentScale - stepScale) * 10) / 10;
+        modeControlsPanel.style.transform = 'scale(' + currentScale + ')';
+      }
+    });
+  }
+  if (increaseBtn) {
+    increaseBtn.addEventListener('click', function(e) {
+      e.stopPropagation();
+      if (currentScale < maxScale) {
+        currentScale = Math.round((currentScale + stepScale) * 10) / 10;
+        modeControlsPanel.style.transform = 'scale(' + currentScale + ')';
+      }
+    });
+  }
+}
+
+function updateControlsPanel(mode) {
+  ensureControlsPanel();
+
+  var cfg = MODE_CONFIG[mode] || MODE_CONFIG.spectate;
+  var controls = MODE_CONTROLS[mode] || [];
+
+  // --- Dynamic style for pseudo-elements we can't reach via JS ---
+  var styleId = 'mode-controls-dynamic-style';
+  var dynStyle = document.getElementById(styleId);
+  if (!dynStyle) {
+    dynStyle = document.createElement('style');
+    dynStyle.id = styleId;
+    document.head.appendChild(dynStyle);
+  }
+  dynStyle.textContent =
+    '#mode-controls-panel .resize-handle::before {' +
+    '  border-right-color: ' + cfg.color + ' !important;' +
+    '  border-bottom-color: ' + cfg.color + ' !important;' +
+    '}' +
+    '#mode-controls-panel:hover { border-color: ' + cfg.color + '66 !important; }';
+
+  // --- Theme the panel border ---
+  modeControlsPanel.style.borderColor = cfg.color + '33';
+  modeControlsPanel.style.borderLeft = '2px solid ' + cfg.color;
+
+  // --- Theme the title bar ---
+  var titleBar = modeControlsPanel.querySelector('.hud-title');
+  if (titleBar) {
+    titleBar.style.color = cfg.color;
+    titleBar.style.borderBottomColor = cfg.color + '33';
+    titleBar.style.background = 'rgba(0, 8, 16, 0.5)';
+    titleBar.style.transition = 'color 0.3s ease, border-bottom-color 0.3s ease';
+
+    var btns = titleBar.querySelectorAll('.font-btn, .collapse-btn, .grip');
+    for (var b = 0; b < btns.length; b++) {
+      btns[b].style.color = cfg.color;
+    }
+  }
+
+  // Update title text
+  var titleEl = modeControlsPanel.querySelector('.hud-title > span:first-child');
+  if (titleEl) titleEl.textContent = cfg.icon + '  ' + cfg.label + ' Controls';
+
+  // Build content rows
+  var content = document.getElementById('mode-controls-content');
+  if (!content) return;
+
+  var html = '';
+  for (var i = 0; i < controls.length; i++) {
+    var c = controls[i];
+    html += '<div style="display:flex;justify-content:space-between;gap:12px;padding:2px 0;">' +
+      '<span style="color:' + cfg.color + ';opacity:0.9;white-space:nowrap;font-size:11px;">' + c.key + '</span>' +
+      '<span style="color:#8899aa;text-align:right;font-size:11px;">' + c.desc + '</span>' +
+      '</div>';
+  }
+
+  content.innerHTML = html;
+}
+
 /**
  * Show or update the mode indicator.
  * Persistent badge in bottom-right + brief center flash on change.
@@ -1610,6 +1772,9 @@ export function showModeIndicator(mode) {
   modeIndicator.style.color = cfg.color;
   modeIndicator.style.border = '1px solid ' + cfg.color + '44';
   modeIndicator.style.background = 'rgba(0, 10, 20, 0.7)';
+
+  // Update controls panel
+  updateControlsPanel(mode);
 
   // --- Center flash ---
   // Remove previous flash immediately
