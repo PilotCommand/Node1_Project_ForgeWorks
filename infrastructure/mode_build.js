@@ -446,6 +446,8 @@ var CONTEXT_MENU_ITEMS = [
       { id: 'place_metalpart',  label: 'Metal Part' },
     ]},
     { id: 'place_custom',  label: 'Custom Item' },
+    { id: 'divider' },
+    { id: 'delete_object', label: 'Delete Object' },
   ]},
   { id: 'divider' },
   { id: 'set_zone',       label: 'Set Zone', submenu: getZoneMenuItems() },
@@ -730,6 +732,16 @@ function handleContextAction(action) {
 
   if (action === 'clear_selection') {
     clearSelections();
+    return;
+  }
+
+  // --- Delete selected object ---
+  if (action === 'delete_object') {
+    if (!buildSelectedId) {
+      console.log('Delete: nothing selected');
+      return;
+    }
+    deleteSelectedObject();
     return;
   }
 
@@ -1162,7 +1174,7 @@ function handleTransformChange(data) {
       productEntry.mesh.rotation.y = -newRot * Math.PI / 180;
     }
 
-    positionBuildHighlightAtWorld(newX + 0.5, newZ + 0.5, 1.0, 0.6);
+    positionBuildHighlightAtWorld(newX + 0.5, newZ + 0.5, 1.0, 0.6, newRot);
     return;
   }
 
@@ -1203,7 +1215,7 @@ function handleTransformChange(data) {
         zone.mesh.rotation.y = -newRot * Math.PI / 180;
       }
 
-      positionBuildHighlightOnRect(zone.rect);
+      positionBuildHighlightOnRect(zone.rect, newRot);
 
       // Re-select to refresh the info and transform panels with new dimensions
       selectZoneInBuild(zone);
@@ -1418,7 +1430,8 @@ function selectObjectInBuild(entry, category, type) {
 
   // Position highlight
   if (type === 'metalpart' && entry.mesh) {
-    positionBuildHighlightAtWorld(entry.mesh.position.x, entry.mesh.position.z, 1.0, 0.6);
+    var meshRotDeg = entry.mesh.rotation.y ? Math.round(-entry.mesh.rotation.y * 180 / Math.PI) : 0;
+    positionBuildHighlightAtWorld(entry.mesh.position.x, entry.mesh.position.z, 1.0, 0.6, meshRotDeg);
   } else if (entry.gridWidth !== undefined) {
     positionBuildHighlightOnEquipment(entry);
   }
@@ -1456,7 +1469,7 @@ function selectZoneInBuild(zone) {
     depth: h,
   });
 
-  positionBuildHighlightOnRect(zone.rect);
+  positionBuildHighlightOnRect(zone.rect, zone.rotation || 0);
 }
 
 function clearBuildSelection() {
@@ -1466,7 +1479,72 @@ function clearBuildSelection() {
     selectRegistryItem(null);
     setTransformContent(null);
   }
-  if (buildSelectionHighlight) buildSelectionHighlight.visible = false;
+  if (buildSelectionHighlight) {
+    buildSelectionHighlight.visible = false;
+    buildSelectionHighlight.rotation.set(0, 0, 0);
+  }
+}
+
+function deleteSelectedObject() {
+  var id = buildSelectedId;
+  if (!id) return;
+
+  // --- Try static equipment ---
+  var staticEntry = staticRegistry.get(id);
+  if (staticEntry) {
+    builder.despawn(id);
+    staticRegistry.unregister(id);
+    clearBuildSelection();
+    clearSelections();
+    pushRegistryForCategory('stationary');
+    console.log('Deleted static:', id);
+    return;
+  }
+
+  // --- Try mobile equipment ---
+  var mobileEntry = mobileRegistry.get(id);
+  if (mobileEntry) {
+    builder.despawn(id);
+    mobileRegistry.unregister(id);
+    clearBuildSelection();
+    clearSelections();
+    pushRegistryForCategory('mobile');
+    console.log('Deleted mobile:', id);
+    return;
+  }
+
+  // --- Try product ---
+  var productEntry = productRegistry.get(id);
+  if (productEntry) {
+    if (productEntry.mesh) {
+      removeFromScene(productEntry.mesh);
+    }
+    productRegistry.unregister(id);
+    clearBuildSelection();
+    clearSelections();
+    pushRegistryForCategory('products');
+    console.log('Deleted product:', id);
+    return;
+  }
+
+  // --- Try zone ---
+  for (var i = 0; i < zones.length; i++) {
+    if (zones[i].id === id) {
+      var zone = zones[i];
+      unregisterZone(zone.id);
+      if (zone.mesh) {
+        removeFromScene(zone.mesh);
+      }
+      zones.splice(i, 1);
+      clearBuildSelection();
+      clearSelections();
+      pushZonesToRegistry();
+      console.log('Deleted zone:', id);
+      return;
+    }
+  }
+
+  console.log('Delete: could not find object with id', id);
 }
 
 function positionBuildHighlightOnEquipment(entry) {
@@ -1477,53 +1555,75 @@ function positionBuildHighlightOnEquipment(entry) {
   var cx = entry.gridX + w / 2;
   var cz = entry.gridZ + h / 2;
   var boxH = 2.5;
+  var rot = entry.rotation || 0;
 
+  // Group carries position + rotation
+  buildSelectionHighlight.position.set(cx, 0, cz);
+  buildSelectionHighlight.rotation.set(0, 0, 0);
+  buildSelectionHighlight.rotation.y = -rot * Math.PI / 180;
+
+  // Children at local offsets
   var wireframe = buildSelectionHighlight.children[0];
   if (wireframe) {
     wireframe.scale.set(w + 0.15, boxH, h + 0.15);
-    wireframe.position.set(cx, boxH / 2, cz);
+    wireframe.position.set(0, boxH / 2, 0);
   }
   var glow = buildSelectionHighlight.children[1];
   if (glow) {
     glow.scale.set(w + 0.3, h + 0.3, 1);
-    glow.position.set(cx, 0.01, cz);
+    glow.position.set(0, 0.01, 0);
   }
   buildSelectionHighlight.visible = true;
 }
 
-function positionBuildHighlightOnRect(rect) {
+function positionBuildHighlightOnRect(rect, rotation) {
   if (!buildSelectionHighlight) return;
 
   var w = rect.maxX - rect.minX + 1;
   var h = rect.maxZ - rect.minZ + 1;
   var cx = rect.minX + w / 2;
   var cz = rect.minZ + h / 2;
+  var rot = rotation || 0;
 
+  // Group carries position + rotation
+  buildSelectionHighlight.position.set(cx, 0, cz);
+  buildSelectionHighlight.rotation.set(0, 0, 0);
+  buildSelectionHighlight.rotation.y = -rot * Math.PI / 180;
+
+  // Children at local offsets
   var wireframe = buildSelectionHighlight.children[0];
   if (wireframe) {
     wireframe.scale.set(w + 0.1, 0.3, h + 0.1);
-    wireframe.position.set(cx, 0.15, cz);
+    wireframe.position.set(0, 0.15, 0);
   }
   var glow = buildSelectionHighlight.children[1];
   if (glow) {
     glow.scale.set(w + 0.2, h + 0.2, 1);
-    glow.position.set(cx, 0.01, cz);
+    glow.position.set(0, 0.01, 0);
   }
   buildSelectionHighlight.visible = true;
 }
 
-function positionBuildHighlightAtWorld(wx, wz, size, boxH) {
+function positionBuildHighlightAtWorld(wx, wz, size, boxH, rotation) {
   if (!buildSelectionHighlight) return;
 
+  var rot = rotation || 0;
+
+  // Group carries position + rotation
+  buildSelectionHighlight.position.set(wx, 0, wz);
+  buildSelectionHighlight.rotation.set(0, 0, 0);
+  buildSelectionHighlight.rotation.y = -rot * Math.PI / 180;
+
+  // Children at local offsets
   var wireframe = buildSelectionHighlight.children[0];
   if (wireframe) {
     wireframe.scale.set(size, boxH, size);
-    wireframe.position.set(wx, boxH / 2, wz);
+    wireframe.position.set(0, boxH / 2, 0);
   }
   var glow = buildSelectionHighlight.children[1];
   if (glow) {
     glow.scale.set(size + 0.2, size + 0.2, 1);
-    glow.position.set(wx, 0.01, wz);
+    glow.position.set(0, 0.01, 0);
   }
   buildSelectionHighlight.visible = true;
 }

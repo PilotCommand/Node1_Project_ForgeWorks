@@ -265,26 +265,31 @@ function createSelectionHighlight() {
   return group;
 }
 
-function positionHighlightOnRect(rect) {
+function positionHighlightOnRect(rect, rotation) {
   if (!selectionHighlight) return;
 
   var w = rect.maxX - rect.minX + 1;
   var h = rect.maxZ - rect.minZ + 1;
   var cx = rect.minX + w / 2;
   var cz = rect.minZ + h / 2;
+  var rot = rotation || 0;
 
-  // Wireframe box
+  // Group carries position + rotation
+  selectionHighlight.position.set(cx, 0, cz);
+  selectionHighlight.rotation.set(0, 0, 0);
+  selectionHighlight.rotation.y = -rot * Math.PI / 180;
+
+  // Children at local offsets
   var wireframe = selectionHighlight.children[0];
   if (wireframe) {
     wireframe.scale.set(w + 0.1, 0.3, h + 0.1);
-    wireframe.position.set(cx, 0.15, cz);
+    wireframe.position.set(0, 0.15, 0);
   }
 
-  // Ground glow
   var glow = selectionHighlight.children[1];
   if (glow) {
     glow.scale.set(w + 0.2, h + 0.2, 1);
-    glow.position.set(cx, 0.01, cz);
+    glow.position.set(0, 0.01, 0);
   }
 
   selectionHighlight.visible = true;
@@ -298,19 +303,24 @@ function positionHighlightOnEquipment(entry) {
   var cx = entry.gridX + w / 2;
   var cz = entry.gridZ + h / 2;
   var boxH = 2.5;
+  var rot = entry.rotation || 0;
 
-  // Wireframe box
+  // Group carries position + rotation
+  selectionHighlight.position.set(cx, 0, cz);
+  selectionHighlight.rotation.set(0, 0, 0);
+  selectionHighlight.rotation.y = -rot * Math.PI / 180;
+
+  // Children at local offsets
   var wireframe = selectionHighlight.children[0];
   if (wireframe) {
     wireframe.scale.set(w + 0.15, boxH, h + 0.15);
-    wireframe.position.set(cx, boxH / 2, cz);
+    wireframe.position.set(0, boxH / 2, 0);
   }
 
-  // Ground glow
   var glow = selectionHighlight.children[1];
   if (glow) {
     glow.scale.set(w + 0.3, h + 0.3, 1);
-    glow.position.set(cx, 0.01, cz);
+    glow.position.set(0, 0.01, 0);
   }
 
   selectionHighlight.visible = true;
@@ -319,7 +329,6 @@ function positionHighlightOnEquipment(entry) {
 function positionHighlightOnProduct(entry) {
   if (!selectionHighlight) return;
 
-  // Products use mesh world position, not grid coords
   var pos = entry.mesh ? entry.mesh.position : null;
   if (!pos) return;
 
@@ -327,19 +336,24 @@ function positionHighlightOnProduct(entry) {
   var cz = pos.z;
   var size = 1.0;
   var boxH = 0.6;
+  var rot = entry.mesh.rotation.y ? Math.round(-entry.mesh.rotation.y * 180 / Math.PI) : 0;
 
-  // Wireframe box (small, product-sized)
+  // Group carries position + rotation
+  selectionHighlight.position.set(cx, 0, cz);
+  selectionHighlight.rotation.set(0, 0, 0);
+  selectionHighlight.rotation.y = -rot * Math.PI / 180;
+
+  // Children at local offsets
   var wireframe = selectionHighlight.children[0];
   if (wireframe) {
     wireframe.scale.set(size, boxH, size);
-    wireframe.position.set(cx, boxH / 2, cz);
+    wireframe.position.set(0, boxH / 2, 0);
   }
 
-  // Ground glow
   var glow = selectionHighlight.children[1];
   if (glow) {
     glow.scale.set(size + 0.2, size + 0.2, 1);
-    glow.position.set(cx, 0.01, cz);
+    glow.position.set(0, 0.01, 0);
   }
 
   selectionHighlight.visible = true;
@@ -561,14 +575,22 @@ function selectZone(zone) {
   });
   selectRegistryItem(zone.id);
 
-  positionHighlightOnRect(zone.rect);
+  // Extract rotation from the zone mesh if it exists
+  var zoneRot = 0;
+  if (zone.meta && zone.meta.mesh && zone.meta.mesh.rotation) {
+    zoneRot = Math.round(-zone.meta.mesh.rotation.y * 180 / Math.PI);
+  }
+  positionHighlightOnRect(zone.rect, zoneRot);
 }
 
 function clearSelection() {
   selectedId = null;
   setInfoContent(null);
   selectRegistryItem(null);
-  if (selectionHighlight) selectionHighlight.visible = false;
+  if (selectionHighlight) {
+    selectionHighlight.visible = false;
+    selectionHighlight.rotation.set(0, 0, 0);
+  }
 }
 
 // ---------------------------------------------------------------------------
