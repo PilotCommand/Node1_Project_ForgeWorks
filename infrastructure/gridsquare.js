@@ -29,20 +29,22 @@
 // Zone Color Definitions (pure data — builder reads these for mesh colors)
 // ---------------------------------------------------------------------------
 
+// DEPRECATED — zone type definitions have moved to floorplan.js (ZONE_TYPES).
+// This map is kept only for internal passability checks. Import from floorplan.js instead.
 export var ZONE_COLORS = {
-  'zone:storage_raw':         '#3399ff',
-  'zone:storage_finished':    '#33cc33',
-  'zone:storage_scrap':       '#996633',
-  'zone:staging_inbound':     '#ff9900',
-  'zone:staging_outbound':    '#ffcc00',
-  'zone:heavy_machinery':     '#cc3333',
-  'zone:heat_treatment':      '#ff6600',
+  'zone:storage_raw':         '#4499dd',
+  'zone:storage_finished':    '#2266aa',
+  'zone:storage_scrap':       '#1a4477',
+  'zone:staging_inbound':     '#dd8833',
+  'zone:staging_outbound':    '#ccaa22',
+  'zone:heavy_machinery':     '#cc3344',
+  'zone:heat_treatment':      '#ee5522',
   'zone:maintenance':         '#9966cc',
-  'zone:office':              '#66cccc',
-  'zone:parking':             '#999999',
-  'zone:pathway_forklift':    '#cccccc',
-  'zone:pathway_manipulator': '#cccccc',
-  'zone:pathway_personnel':   '#ffffcc',
+  'zone:office':              '#44aaaa',
+  'zone:parking':             '#778899',
+  'zone:pathway_forklift':    '#44bb66',
+  'zone:pathway_manipulator': '#2d8a4e',
+  'zone:pathway_personnel':   '#88cc44',
 };
 
 

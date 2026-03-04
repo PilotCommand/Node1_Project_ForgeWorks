@@ -17,6 +17,7 @@
 import * as THREE from 'three';
 import { getCamera, getRenderer, addToScene, removeFromScene } from './visualhud.js';
 import { setRotateEnabled, setPanEnabled } from './controls.js';
+import { registerZone, unregisterZone, getAllZones, ZONE_TYPES, ZONE_COLORS, getZoneLabel, getZoneColor, getZoneMenuItems } from './floorplan.js';
 
 let active = false;
 
@@ -35,6 +36,11 @@ let currentCell = null;       // { x, z } grid cell under cursor right now
 
 // Committed selections (array of rects, each with its own mesh)
 let selections = [];          // [{ rect: {minX,minZ,maxX,maxZ}, mesh: THREE.Mesh }]
+
+// Placed zones (persists across mode switches)
+let zones = [];               // [{ id, rect, type, mesh }]  — id is from floorplan registry
+
+// Zone colors and labels are imported from floorplan.js (single source of truth)
 
 // Raycasting
 let raycaster = new THREE.Raycaster();
@@ -146,6 +152,8 @@ export function activate() {
     addToScene(selections[i].mesh);
   }
 
+  // Zone meshes are always in the scene — no need to re-add
+
   // --- Event listeners ---
   var domEl = getRenderer().domElement;
   onMouseMoveBound = onMouseMove;
@@ -185,6 +193,8 @@ export function deactivate() {
   for (var i = 0; i < selections.length; i++) {
     removeFromScene(selections[i].mesh);
   }
+
+  // NOTE: zone meshes stay in the scene — they're part of the world, not the mode
 
   // Hide context menu
   hideContextMenu();
@@ -373,27 +383,7 @@ var CONTEXT_MENU_ITEMS = [
     { id: 'place_custom',  label: 'Custom Item' },
   ]},
   { id: 'divider' },
-  { id: 'set_zone',       label: 'Set Zone', submenu: [
-    { id: 'zone:storage_raw',         label: 'Storage — Raw' },
-    { id: 'zone:storage_finished',    label: 'Storage — Finished' },
-    { id: 'zone:storage_scrap',       label: 'Storage — Scrap' },
-    { id: 'divider' },
-    { id: 'zone:staging_inbound',     label: 'Staging — Inbound' },
-    { id: 'zone:staging_outbound',    label: 'Staging — Outbound' },
-    { id: 'divider' },
-    { id: 'zone:heavy_machinery',     label: 'Heavy Machinery' },
-    { id: 'zone:heat_treatment',      label: 'Heat Treatment' },
-    { id: 'zone:maintenance',         label: 'Maintenance' },
-    { id: 'divider' },
-    { id: 'zone:pathway_forklift',    label: 'Pathway — Forklift' },
-    { id: 'zone:pathway_manipulator', label: 'Pathway — Manipulator' },
-    { id: 'zone:pathway_personnel',   label: 'Pathway — Personnel' },
-    { id: 'divider' },
-    { id: 'zone:office',              label: 'Office' },
-    { id: 'zone:parking',             label: 'Parking' },
-    { id: 'divider' },
-    { id: 'zone:clear',               label: 'Clear Zone' },
-  ]},
+  { id: 'set_zone',       label: 'Set Zone', submenu: getZoneMenuItems() },
   { id: 'clear_selection', label: 'Clear Selection' },
 ];
 
@@ -675,9 +665,241 @@ function handleContextAction(action) {
 
   if (action === 'clear_selection') {
     clearSelections();
+    return;
   }
 
-  // Other actions will be wired up later
+  // --- Zone clearing ---
+  if (action === 'zone:clear') {
+    if (selections.length === 0) return;
+    for (var s = 0; s < selections.length; s++) {
+      subtractFromZones(selections[s].rect);
+    }
+    clearSelections();
+    return;
+  }
+
+  if (action.indexOf('zone:') === 0 && ZONE_COLORS[action]) {
+    if (selections.length === 0) return;
+
+    for (var i = 0; i < selections.length; i++) {
+      var rect = selections[i].rect;
+
+      // Subtract this rect from any existing zones it overlaps
+      subtractFromZones(rect);
+
+      // Register zone first to get ID, then create mesh with label
+      var entry = registerZone(action, rect);
+      var mesh = makeZoneMesh(rect, ZONE_COLORS[action], entry.id, action);
+      addToScene(mesh);
+      entry.meta.mesh = mesh;
+      zones.push({ id: entry.id, rect: copyRect(rect), type: action, mesh: mesh });
+    }
+
+    clearSelections();
+    console.log('Zones:', zones.map(function(z) { return z.id + ' ' + z.type + ' ' + JSON.stringify(z.rect); }));
+    return;
+  }
+
+  // Other actions (place_*, etc.) will be wired up later
+}
+
+// ---------------------------------------------------------------------------
+// Zone Helpers
+// ---------------------------------------------------------------------------
+
+function makeZoneMesh(rect, colorHex, zoneId, zoneType) {
+  var w = rect.maxX - rect.minX + 1;
+  var h = rect.maxZ - rect.minZ + 1;
+  var cx = rect.minX + w / 2;
+  var cz = rect.minZ + h / 2;
+
+  var group = new THREE.Group();
+
+  // --- Fill plane ---
+  var geo = new THREE.PlaneGeometry(w, h);
+  var mat = new THREE.MeshBasicMaterial({
+    color: new THREE.Color(colorHex),
+    transparent: true,
+    opacity: 0.3,
+    depthWrite: false,
+    side: THREE.DoubleSide,
+  });
+  var fill = new THREE.Mesh(geo, mat);
+  fill.rotation.x = -Math.PI / 2;
+  fill.position.set(cx, 0.015, cz);
+  group.add(fill);
+
+  // --- Outline ---
+  var hw = w / 2;
+  var hh = h / 2;
+  var outlinePts = [
+    new THREE.Vector3(cx - hw, 0.02, cz - hh),
+    new THREE.Vector3(cx + hw, 0.02, cz - hh),
+    new THREE.Vector3(cx + hw, 0.02, cz + hh),
+    new THREE.Vector3(cx - hw, 0.02, cz + hh),
+    new THREE.Vector3(cx - hw, 0.02, cz - hh), // close the loop
+  ];
+  var outlineGeo = new THREE.BufferGeometry().setFromPoints(outlinePts);
+  var outlineMat = new THREE.LineBasicMaterial({
+    color: new THREE.Color(colorHex),
+    transparent: true,
+    opacity: 0.7,
+  });
+  group.add(new THREE.Line(outlineGeo, outlineMat));
+
+  // --- Label sprite ---
+  var labelText = getZoneLabel(zoneType);
+  if (zoneId) labelText += '  ' + zoneId;
+
+  var label = makeZoneLabel(labelText, colorHex, w, h);
+  label.position.set(cx, 0.05, cz);
+  group.add(label);
+
+  return group;
+}
+
+function makeZoneLabel(text, colorHex, zoneW, zoneH) {
+  var canvas = document.createElement('canvas');
+  var fontSize = 42;
+  canvas.width = 512;
+  canvas.height = 64;
+  var ctx = canvas.getContext('2d');
+
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+  // Background pill
+  ctx.fillStyle = 'rgba(0, 10, 20, 0.6)';
+  roundRect(ctx, 2, 2, canvas.width - 4, canvas.height - 4, 8);
+  ctx.fill();
+
+  // Text
+  ctx.font = 'bold ' + fontSize + 'px Consolas, SF Mono, Fira Code, monospace';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillStyle = colorHex;
+  ctx.fillText(text, canvas.width / 2, canvas.height / 2);
+
+  var texture = new THREE.CanvasTexture(canvas);
+  texture.minFilter = THREE.LinearFilter;
+
+  var spriteMat = new THREE.SpriteMaterial({
+    map: texture,
+    transparent: true,
+    opacity: 0.85,
+    depthWrite: false,
+    depthTest: false,
+  });
+  var sprite = new THREE.Sprite(spriteMat);
+
+  // Scale label to fit within zone, with a sensible max
+  var labelScale = Math.min(zoneW * 0.9, 6);
+  sprite.scale.set(labelScale, labelScale * (canvas.height / canvas.width), 1);
+
+  return sprite;
+}
+
+function roundRect(ctx, x, y, w, h, r) {
+  ctx.beginPath();
+  ctx.moveTo(x + r, y);
+  ctx.lineTo(x + w - r, y);
+  ctx.quadraticCurveTo(x + w, y, x + w, y + r);
+  ctx.lineTo(x + w, y + h - r);
+  ctx.quadraticCurveTo(x + w, y + h, x + w - r, y + h);
+  ctx.lineTo(x + r, y + h);
+  ctx.quadraticCurveTo(x, y + h, x, y + h - r);
+  ctx.lineTo(x, y + r);
+  ctx.quadraticCurveTo(x, y, x + r, y);
+  ctx.closePath();
+}
+
+/**
+ * Subtract a rectangle from all existing zones.
+ * Zones fully inside the cut rect are removed.
+ * Zones partially overlapping are split into up to 4 remaining pieces.
+ */
+function subtractFromZones(cutRect) {
+  var newZones = [];
+
+  for (var i = zones.length - 1; i >= 0; i--) {
+    var zone = zones[i];
+
+    if (!rectsOverlap(zone.rect, cutRect)) {
+      // No overlap — keep as-is
+      continue;
+    }
+
+    // Unregister from floorplan registry and remove mesh
+    unregisterZone(zone.id);
+    removeFromScene(zone.mesh);
+    zones.splice(i, 1);
+
+    // Compute remaining rectangles after subtraction
+    var pieces = subtractRect(zone.rect, cutRect);
+
+    // Create new zone entries for each remaining piece
+    for (var p = 0; p < pieces.length; p++) {
+      var entry = registerZone(zone.type, pieces[p]);
+      var mesh = makeZoneMesh(pieces[p], ZONE_COLORS[zone.type], entry.id, zone.type);
+      addToScene(mesh);
+      entry.meta.mesh = mesh;
+      newZones.push({ id: entry.id, rect: pieces[p], type: zone.type, mesh: mesh });
+    }
+  }
+
+  // Add all new pieces back into the zones array
+  for (var i = 0; i < newZones.length; i++) {
+    zones.push(newZones[i]);
+  }
+}
+
+/**
+ * Subtract rect B from rect A, returning 0-4 remaining rectangles.
+ *
+ * Splits A into up to 4 strips:
+ *   - Top strip:    full width of A, above B
+ *   - Bottom strip: full width of A, below B
+ *   - Left strip:   between top and bottom, to the left of B
+ *   - Right strip:  between top and bottom, to the right of B
+ */
+function subtractRect(a, b) {
+  var pieces = [];
+
+  // Clamp B to the bounds of A
+  var cMinX = Math.max(a.minX, b.minX);
+  var cMaxX = Math.min(a.maxX, b.maxX);
+  var cMinZ = Math.max(a.minZ, b.minZ);
+  var cMaxZ = Math.min(a.maxZ, b.maxZ);
+
+  // Top strip (full width, above the cut)
+  if (a.minZ < cMinZ) {
+    pieces.push({ minX: a.minX, minZ: a.minZ, maxX: a.maxX, maxZ: cMinZ - 1 });
+  }
+
+  // Bottom strip (full width, below the cut)
+  if (a.maxZ > cMaxZ) {
+    pieces.push({ minX: a.minX, minZ: cMaxZ + 1, maxX: a.maxX, maxZ: a.maxZ });
+  }
+
+  // Left strip (between top and bottom, left of cut)
+  if (a.minX < cMinX) {
+    pieces.push({ minX: a.minX, minZ: cMinZ, maxX: cMinX - 1, maxZ: cMaxZ });
+  }
+
+  // Right strip (between top and bottom, right of cut)
+  if (a.maxX > cMaxX) {
+    pieces.push({ minX: cMaxX + 1, minZ: cMinZ, maxX: a.maxX, maxZ: cMaxZ });
+  }
+
+  return pieces;
+}
+
+function rectsOverlap(a, b) {
+  return a.minX <= b.maxX && a.maxX >= b.minX &&
+         a.minZ <= b.maxZ && a.maxZ >= b.minZ;
+}
+
+function copyRect(r) {
+  return { minX: r.minX, minZ: r.minZ, maxX: r.maxX, maxZ: r.maxZ };
 }
 
 function onContextMenu(event) {
