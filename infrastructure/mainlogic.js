@@ -34,6 +34,7 @@ import * as purchaseorders from './purchaseorders.js';
 import * as generalinventory from './generalinventory.js';
 import * as maintenanceschedule from './maintenanceschedule.js';
 import * as documentprotocols from './documentprotocols.js';
+import * as manufacturingreview from './manufacturingreview.js';
 
 // --- Modes ---
 import * as modeBuild from './mode_build.js';
@@ -108,6 +109,7 @@ export function init(container, options) {
   generalinventory.onBack(returnToMenu);
   maintenanceschedule.onBack(returnToMenu);
   documentprotocols.onBack(returnToMenu);
+  manufacturingreview.onBack(returnToMenu);
 
   // Show the main menu
   mainmenu.show();
@@ -169,7 +171,7 @@ function startForge() {
   // 7. Set up mode cycling (spacebar)
   window.addEventListener('keydown', function(e) {
     if (e.code === 'Space' && !e.repeat) {
-      if (mainmenu.isVisible() || purchaseorders.isVisible() || generalinventory.isVisible() || maintenanceschedule.isVisible() || documentprotocols.isVisible()) return;
+      if (mainmenu.isVisible() || purchaseorders.isVisible() || generalinventory.isVisible() || maintenanceschedule.isVisible() || documentprotocols.isVisible() || manufacturingreview.isVisible()) return;
       e.preventDefault();
       cycleMode();
     }
@@ -229,6 +231,12 @@ function handleNavigation(key) {
     return;
   }
 
+  if (key === 'manufacturing_review') {
+    mainmenu.hide();
+    manufacturingreview.show();
+    return;
+  }
+
   // Other pages — for now just log
   console.log('Page not yet implemented:', key);
 }
@@ -270,6 +278,7 @@ function hideAllPages() {
   generalinventory.hide();
   maintenanceschedule.hide();
   documentprotocols.hide();
+  manufacturingreview.hide();
 }
 
 // ---------------------------------------------------------------------------
@@ -628,6 +637,7 @@ export {
   generalinventory,
   maintenanceschedule,
   documentprotocols,
+  manufacturingreview,
   staticRegistry,
   mobileRegistry,
   productRegistry,

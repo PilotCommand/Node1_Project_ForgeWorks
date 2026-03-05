@@ -71,6 +71,14 @@ var NAV_ITEMS = [
     accent: '#a8a4ce',
     accentGlow: 'rgba(168, 164, 206, 0.2)',
   },
+  {
+    key: 'manufacturing_review',
+    label: 'Manufacturing Review',
+    desc: 'Billet sizing, forge ratio, true strain, and percent reduction — step-by-step working with save/load configs.',
+    icon: 'mfgreview',
+    accent: '#e05c3a',
+    accentGlow: 'rgba(224, 92, 58, 0.2)',
+  },
 ];
 
 // ---------------------------------------------------------------------------
@@ -122,6 +130,17 @@ function getIcon(key) {
         '<path d="M16 22h16"/><path d="M16 28h16"/><path d="M16 34h10"/>' +
         '<path d="M6 12h4" opacity="0.3"/><path d="M6 18h4" opacity="0.3"/>' +
         '<path d="M6 24h4" opacity="0.3"/>' +
+      '</svg>',
+    mfgreview:
+      '<svg viewBox="0 0 48 48" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">' +
+        '<rect x="6" y="30" width="10" height="12" rx="1"/>' +
+        '<rect x="19" y="22" width="10" height="20" rx="1"/>' +
+        '<rect x="32" y="14" width="10" height="28" rx="1"/>' +
+        '<path d="M11 30l8-10 10 4 10-16" stroke-width="1.8"/>' +
+        '<circle cx="11" cy="30" r="2" fill="currentColor"/>' +
+        '<circle cx="19" cy="20" r="2" fill="currentColor"/>' +
+        '<circle cx="29" cy="24" r="2" fill="currentColor"/>' +
+        '<circle cx="39" cy="8"  r="2" fill="currentColor"/>' +
       '</svg>',
   };
   return icons[key] || '';
@@ -250,7 +269,7 @@ function buildOverlay() {
     fontSize: '10px',
     letterSpacing: '4px',
     textTransform: 'uppercase',
-    color: '#556677',
+    color: '#8899aa',
     fontWeight: '400',
   });
   subtitle.textContent = 'Forge Management System';
@@ -261,7 +280,7 @@ function buildOverlay() {
   Object.assign(divider.style, {
     width: '60px', height: '1px',
     margin: '18px auto 0',
-    background: 'linear-gradient(90deg, transparent, rgba(255,106,0,0.4), transparent)',
+    background: 'linear-gradient(90deg, transparent, rgba(255,106,0,0.7), transparent)',
   });
   header.appendChild(divider);
 
@@ -300,7 +319,7 @@ function buildOverlay() {
     fontSize: '9px',
     letterSpacing: '3px',
     textTransform: 'uppercase',
-    color: '#334455',
+    color: '#556677',
   });
   footerText.textContent = 'Infrastructure Tier 7  \u2022  v0.1';
   footer.appendChild(footerText);
@@ -330,7 +349,7 @@ function buildNavCard(item, index) {
     flexDirection: 'column',
     padding: '22px 24px',
     borderRadius: '4px',
-    border: '1px solid rgba(255,255,255,0.06)',
+    border: '2px solid rgba(255,255,255,0.22)',
     background: 'rgba(8, 14, 22, 0.8)',
     cursor: 'pointer',
     overflow: 'hidden',
@@ -385,7 +404,7 @@ function buildNavCard(item, index) {
     height: index === 0 ? '44px' : '36px',
     flexShrink: '0',
     color: item.accent,
-    opacity: '0.7',
+    opacity: '0.9',
     transition: 'opacity 0.3s ease, transform 0.3s ease',
   });
   iconWrap.innerHTML = getIcon(item.icon);
@@ -401,8 +420,7 @@ function buildNavCard(item, index) {
     fontWeight: '600',
     letterSpacing: '1.5px',
     textTransform: 'uppercase',
-    color: '#b0b8c4',
-    marginBottom: '6px',
+    color: '#cdd5de',
     transition: 'color 0.3s ease',
   });
   label.textContent = item.label;
@@ -412,8 +430,7 @@ function buildNavCard(item, index) {
   Object.assign(desc.style, {
     fontSize: '10px',
     lineHeight: '1.6',
-    color: '#4a5568',
-    transition: 'color 0.3s ease',
+    color: '#7a8fa8',
     maxWidth: index === 0 ? '600px' : 'none',
   });
   desc.textContent = item.desc;
@@ -427,8 +444,7 @@ function buildNavCard(item, index) {
     display: 'flex',
     alignItems: 'center',
     alignSelf: 'center',
-    color: '#334455',
-    fontSize: '16px',
+    color: '#556a7a',
     transition: 'color 0.3s ease, transform 0.3s ease',
     flexShrink: '0',
   });
@@ -446,7 +462,7 @@ function buildNavCard(item, index) {
       gap: '8px',
       marginTop: '12px',
       paddingTop: '12px',
-      borderTop: '1px solid rgba(255,255,255,0.04)',
+      borderTop: '1px solid rgba(255,255,255,0.08)',
       position: 'relative',
       zIndex: '1',
     });
@@ -466,7 +482,7 @@ function buildNavCard(item, index) {
       fontSize: '9px',
       letterSpacing: '2px',
       textTransform: 'uppercase',
-      color: '#3a5a3a',
+      color: '#4a9a5a',
     });
     statusText.textContent = 'Systems Online';
     statusRow.appendChild(statusText);
@@ -476,30 +492,30 @@ function buildNavCard(item, index) {
 
   // --- Hover interactions ---
   card.addEventListener('mouseenter', function() {
-    card.style.borderColor = item.accent + '44';
+    card.style.borderColor = item.accent + 'aa';
     card.style.background = 'rgba(12, 20, 32, 0.9)';
     card.style.boxShadow = '0 4px 24px ' + item.accentGlow + ', inset 0 1px 0 ' + item.accent + '15';
     accentLine.style.opacity = '1';
     cornerGlow.style.opacity = '1';
     iconWrap.style.opacity = '1';
     iconWrap.style.transform = 'scale(1.05)';
-    label.style.color = '#dde3ea';
-    desc.style.color = '#6b7a8d';
+    label.style.color = '#edf1f5';
+    desc.style.color = '#9aafc4';
     arrow.style.color = item.accent;
     arrow.style.transform = 'translateX(3px)';
   });
 
   card.addEventListener('mouseleave', function() {
-    card.style.borderColor = 'rgba(255,255,255,0.06)';
+    card.style.borderColor = 'rgba(255,255,255,0.22)';
     card.style.background = 'rgba(8, 14, 22, 0.8)';
     card.style.boxShadow = 'none';
     accentLine.style.opacity = '0';
     cornerGlow.style.opacity = '0';
-    iconWrap.style.opacity = '0.7';
+    iconWrap.style.opacity = '0.9';
     iconWrap.style.transform = 'scale(1)';
-    label.style.color = '#b0b8c4';
-    desc.style.color = '#4a5568';
-    arrow.style.color = '#334455';
+    label.style.color = '#cdd5de';
+    desc.style.color = '#7a8fa8';
+    arrow.style.color = '#556a7a';
     arrow.style.transform = 'translateX(0)';
   });
 
@@ -556,7 +572,7 @@ function buildLoadingOverlay() {
     fontSize: '14px',
     letterSpacing: '6px',
     textTransform: 'uppercase',
-    color: '#778899',
+    color: '#99aabb',
     marginBottom: '24px',
     fontWeight: '300',
   });
@@ -568,7 +584,7 @@ function buildLoadingOverlay() {
   Object.assign(barOuter.style, {
     width: '240px',
     height: '2px',
-    background: 'rgba(255,255,255,0.06)',
+    background: 'rgba(255,255,255,0.12)',
     borderRadius: '1px',
     margin: '0 auto 16px',
     overflow: 'hidden',
@@ -593,7 +609,7 @@ function buildLoadingOverlay() {
     fontSize: '9px',
     letterSpacing: '2px',
     textTransform: 'uppercase',
-    color: '#445566',
+    color: '#6677aa',
   });
   statusLine.textContent = 'Initializing systems...';
   loadWrap.appendChild(statusLine);
