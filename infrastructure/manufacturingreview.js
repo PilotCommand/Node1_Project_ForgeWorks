@@ -26,59 +26,21 @@
 // Constants
 // ---------------------------------------------------------------------------
 
-var NODE_W   = 180;
-var NODE_H   = 72;
-var PORT_R   = 6;
-var PORT_HIT = 14;
+export var NODE_W   = 180;
+export var NODE_H   = 72;
+export var PORT_R   = 6;
+export var PORT_HIT = 14;
 
-var ACCENT     = '#e05c3a';
-var ACCENT_DIM = 'rgba(224, 92, 58, ';
+export var ACCENT     = '#e05c3a';
+export var ACCENT_DIM = 'rgba(224, 92, 58, ';
 
-// ---------------------------------------------------------------------------
-// Module State
-// ---------------------------------------------------------------------------
+// State is managed by manufacturingreview_states.js — imported as S above.
 
-var overlay      = null;
-var backCallback = null;
-var visible      = false;
 
-var canvasArea   = null;
-var svgLayer     = null;
-var nodesLayer   = null;
 
-var nodes        = [];
-var connections  = [];
-var _nid         = 0;
-var _cid         = 0;
 
-var selectedId     = null;
-var selectedConnId = null;   // currently selected connection
-var dragState      = null;
-var ctxMenu      = null;
-var leftMode     = 'general';  // 'general' | 'node_detail' | 'path'
 
-// Canvas pan / zoom
-var panX  = 0;
-var panY  = 0;
-var zoom  = 1;
-var worldLayer = null;   // single div that holds nodesLayer + svgLayer, gets the transform
 
-var general = {
-  // Logistical fields (left panel)
-  jobNumber:    'JOB-001',
-  partNumber:   '',
-  partName:     '',
-  revision:     'A',
-  customer:     '',
-  engineer:     '',
-  dateCreated:  new Date().toISOString().slice(0, 10),
-  status:       'draft',
-  notes:        '',
-  // Material fields (used by calculations, set via Stock In node)
-  material:     '4140',
-  condition:    'annealed',
-  density:      7.85,
-};
 
 // ---------------------------------------------------------------------------
 // Reference Data
@@ -89,7 +51,7 @@ var general = {
 // densityDefault in g/cm³ (SI). Used to auto-populate the density field
 // when the user changes family. Editable per-job in the node detail panel.
 // ---------------------------------------------------------------------------
-var MATERIAL_CATALOG = {
+export var MATERIAL_CATALOG = {
   carbon_steel: {
     label: 'Carbon Steel',
     densityDefault: 7.85,
@@ -224,7 +186,7 @@ var MATERIAL_CATALOG = {
 // Node Type Definitions
 // ---------------------------------------------------------------------------
 
-var NODE_DEFS = {
+export var NODE_DEFS = {
 
   // ── STOCK IN ──────────────────────────────────────────────────────────────
   // This forge buys ingots and billets in three cross-section geometries.
@@ -646,8 +608,8 @@ var NODE_DEFS = {
 // CALCULATION ENGINE
 // ===========================================================================
 
-function computeChain() {
-  var startNode = nodes.find(function(n) { return n.type === 'stock_in'; });
+export function computeChain() {
+  var startNode = S.getNodes().find(function(n) { return n.type === 'stock_in'; });
   if (!startNode) return [];
 
   var chain = [];
@@ -659,7 +621,7 @@ function computeChain() {
   while (current && !visited[current.id]) {
     visited[current.id] = true;
 
-    var conn = connections.find(function(c) { return c.fromId === current.id; });
+    var conn = S.getConnections().find(function(c) { return c.fromId === current.id; });
 
     // Compute current node (pass 1 / only pass)
     var step = computeStep(current, massKg, dims);
@@ -669,7 +631,7 @@ function computeChain() {
 
     if (!conn) break;
 
-    var nextNode = nodes.find(function(n) { return n.id === conn.toId; });
+    var nextNode = S.getNodes().find(function(n) { return n.id === conn.toId; });
     if (!nextNode) break;
 
     // Expand cycles: run destination node (cycle-1) extra times before moving forward
@@ -701,7 +663,7 @@ function computeStep(node, massIn, dimsIn) {
   switch (node.type) {
 
     case 'stock_in': {
-      var dens = p.density || general.density;
+      var dens = p.density || S.getGeneral().density;
       // Volume depends on cross-section geometry
       var vol_mm3;
       var geom = p.geometry || 'round_cylinder';
@@ -747,7 +709,7 @@ function computeStep(node, massIn, dimsIn) {
         var Dc = dimsIn.diameter || 0;
         Ac = Math.PI * Math.pow(Dc / 2, 2);
       }
-      var densC   = general.density;
+      var densC   = S.getGeneral().density;
       var cropH   = p.cropBothEnds === 'yes' ? (p.cropHeadMm || 0) : 0;
       var cropT   = p.cropBothEnds === 'yes' ? (p.cropTailMm || 0) : 0;
       var cropTot = cropH + cropT;
@@ -814,7 +776,7 @@ function computeStep(node, massIn, dimsIn) {
     case 'ring_mill': {
       var odR = p.outOD || 0; var idR = p.outID || 0; var htR = p.outHeight || 0;
       var volRing = Math.max(0, Math.PI / 4 * (odR * odR - idR * idR) * htR);
-      var massRing = round3(volRing / 1e6 * general.density);
+      var massRing = round3(volRing / 1e6 * S.getGeneral().density);
       step.massOut  = massRing;
       step.massLoss = round3(Math.max(0, massIn - massRing));
       step.dimsOut  = { od: odR, id: idR, height: htR, diameter: odR };
@@ -867,7 +829,7 @@ function computeStep(node, massIn, dimsIn) {
       var hInM  = dimsIn.height   || 150;
       var volIn  = Math.PI * Math.pow(dInM / 2, 2) * hInM;
       var volOut = Math.PI * Math.pow((p.outDiameter||dInM) / 2, 2) * (p.outHeight||hInM);
-      var chipMass = round3(Math.max(0, (volIn - volOut) / 1e6 * general.density));
+      var chipMass = round3(Math.max(0, (volIn - volOut) / 1e6 * S.getGeneral().density));
       step.massOut  = round3(Math.max(0, massIn - chipMass));
       step.massLoss = chipMass;
       step.dimsOut  = { diameter: p.outDiameter, height: p.outHeight };
@@ -956,26 +918,62 @@ function computeStep(node, massIn, dimsIn) {
   return step;
 }
 
-function fmtVol(v) {
+export function fmtVol(v) {
   if (v >= 1e6) return (v / 1e6).toFixed(3) + ' ×10⁶';
   return Math.round(v).toLocaleString();
 }
 
-function round3(v) { return Math.round(v * 1000) / 1000; }
+export function round3(v) { return Math.round(v * 1000) / 1000; }
 
 // ---------------------------------------------------------------------------
 // Unit System — import helpers from measurementunits.js and wrap them
 // ---------------------------------------------------------------------------
 
 import { setDisplaySystem, formatValue, convert, celsiusToFahrenheit } from './measurementunits.js';
+import * as S from './manufacturingreview_states.js';
+import {
+  init        as initProcess,
+  buildCanvasPanel,
+  applyWorldTransform,
+  resetView,
+  createNode,
+  refreshNodeEl,
+  removeNodeEl,
+  selectNode,
+  deleteNode,
+  setNodeSelected,
+  addConnection,
+  selectConn,
+  deleteConn,
+  refreshConnections,
+  dismissContextMenu,
+  onMouseMove,
+  onMouseUp,
+  onKeyDown,
+} from './manufacturingreview_process.js';
+import {
+  buildCalcPanel,
+  refreshCalcPanel,
+} from './manufacturingreview_summary.js';
+import {
+  buildRightPanel,
+  showRightPlaceholder,
+  refreshRightPanel,
+  buildStepWorkings,
+} from './manufacturingreview_estimates.js';
+import {
+  init           as initInputs,
+  buildLeftPanel,
+  refreshLeftPanel,
+  toDisplay, fromDisplay, unitSuffix, scaleParam,
+} from './manufacturingreview_inputs.js';
 
-var unitSystem = 'imperial'; // 'si' | 'imperial'
 
 function setUnitSystem(sys) {
-  unitSystem = sys;
+  S.setUnitSystem(sys);
   setDisplaySystem(sys);
   // Refresh all node card previews on canvas
-  nodes.forEach(function(n) { refreshNodeEl(n.id); });
+  S.getNodes().forEach(function(n) { refreshNodeEl(n.id); });
   // Refresh all display panels
   refreshRightPanel(); refreshCalcPanel();
   refreshLeftPanel();
@@ -983,46 +981,46 @@ function setUnitSystem(sys) {
 
 // Display wrappers — all internal values are SI; these convert for display only.
 
-function dMass(kg) {
-  if (unitSystem === 'imperial') {
+export function dMass(kg) {
+  if (S.getUnitSystem() === 'imperial') {
     return round3(kg * 2.20462) + ' lb';
   }
   return kg + ' kg';
 }
 
-function dLen(mm) {
-  if (unitSystem === 'imperial') {
+export function dLen(mm) {
+  if (S.getUnitSystem() === 'imperial') {
     return round3(mm / 25.4) + ' in';
   }
   return mm + ' mm';
 }
 
-function dTemp(celsius) {
-  if (unitSystem === 'imperial') {
+export function dTemp(celsius) {
+  if (S.getUnitSystem() === 'imperial') {
     return round3(celsius * 9 / 5 + 32) + ' °F';
   }
   return celsius + ' °C';
 }
 
-function dVol(mm3) {
-  if (unitSystem === 'imperial') {
+export function dVol(mm3) {
+  if (S.getUnitSystem() === 'imperial') {
     return round3(mm3 / 16387.064) + ' in³';
   }
   return fmtVol(mm3) + ' mm³';
 }
 
-function dDensity(g_cm3) {
-  if (unitSystem === 'imperial') {
+export function dDensity(g_cm3) {
+  if (S.getUnitSystem() === 'imperial') {
     return round3(g_cm3 * 0.036127) + ' lb/in³';
   }
   return g_cm3 + ' g/cm³';
 }
 
-function dMassUnit()   { return unitSystem === 'imperial' ? 'lb'    : 'kg';    }
-function dLenUnit()    { return unitSystem === 'imperial' ? 'in'    : 'mm';    }
-function dTempUnit()   { return unitSystem === 'imperial' ? '°F'   : '°C';   }
-function dVolUnit()    { return unitSystem === 'imperial' ? 'in³'  : 'mm³';  }
-function dDensUnit()   { return unitSystem === 'imperial' ? 'lb/in³': 'g/cm³'; }
+export function dMassUnit()   { return S.getUnitSystem() === 'imperial' ? 'lb'    : 'kg';    }
+export function dLenUnit()    { return S.getUnitSystem() === 'imperial' ? 'in'    : 'mm';    }
+export function dTempUnit()   { return S.getUnitSystem() === 'imperial' ? '°F'   : '°C';   }
+export function dVolUnit()    { return S.getUnitSystem() === 'imperial' ? 'in³'  : 'mm³';  }
+export function dDensUnit()   { return S.getUnitSystem() === 'imperial' ? 'lb/in³': 'g/cm³'; }
 
 
 // ===========================================================================
@@ -1030,12 +1028,26 @@ function dDensUnit()   { return unitSystem === 'imperial' ? 'lb/in³': 'g/cm³';
 // ===========================================================================
 
 function buildOverlay() {
-  if (overlay) return;
+  if (S.getOverlay()) return;
   injectStyles();
 
-  overlay = document.createElement('div');
-  overlay.id = 'forgeworks-mfg-review';
-  Object.assign(overlay.style, {
+  // Wire cross-panel refresh callbacks into the process module
+  initProcess({
+    refreshLeftPanel:  refreshLeftPanel,
+    refreshRightPanel: refreshRightPanel,
+    refreshCalcPanel:  refreshCalcPanel,
+  });
+
+  initInputs({
+    refreshRightPanel:  refreshRightPanel,
+    refreshCalcPanel:   refreshCalcPanel,
+    refreshNodeEl:      refreshNodeEl,
+    refreshStatusBadge: refreshStatusBadge,
+  });
+
+  S.setOverlay(document.createElement('div'));
+  S.getOverlay().id = 'forgeworks-mfg-review';
+  Object.assign(S.getOverlay().style, {
     position: 'fixed', top: '0', left: '0', width: '100vw', height: '100vh',
     zIndex: '9999', display: 'flex', flexDirection: 'column',
     background: '#060b11', overflow: 'hidden',
@@ -1048,9 +1060,9 @@ function buildOverlay() {
     position: 'absolute', top: '0', left: '0', width: '100%', height: '100%', pointerEvents: 'none',
     background: 'radial-gradient(ellipse 70% 50% at 15% 100%,' + ACCENT_DIM + '0.04) 0%,transparent 70%)',
   });
-  overlay.appendChild(bg);
+  S.getOverlay().appendChild(bg);
 
-  overlay.appendChild(buildTopBar());
+  S.getOverlay().appendChild(buildTopBar());
 
   // Outer vertical container: three-panel row on top, calc panel below
   var outer = document.createElement('div');
@@ -1064,10 +1076,10 @@ function buildOverlay() {
   outer.appendChild(body);
 
   outer.appendChild(buildCalcPanel());
-  overlay.appendChild(outer);
+  S.getOverlay().appendChild(outer);
 
-  overlay.appendChild(buildActionBar());
-  document.body.appendChild(overlay);
+  S.getOverlay().appendChild(buildActionBar());
+  document.body.appendChild(S.getOverlay());
 
   document.addEventListener('mousemove', onMouseMove);
   document.addEventListener('mouseup',   onMouseUp);
@@ -1090,7 +1102,7 @@ function buildTopBar() {
   var backBtn = document.createElement('button');
   styleBarBtn(backBtn);
   backBtn.innerHTML = '<span style="font-size:14px;line-height:1">‹</span> MENU';
-  backBtn.addEventListener('click', function() { if (backCallback) backCallback(); });
+  backBtn.addEventListener('click', function() { if (S.getBackCallback()) S.getBackCallback()(); });
   bar.appendChild(backBtn);
 
   var sep = document.createElement('div');
@@ -1131,7 +1143,7 @@ function buildTopBar() {
 
   var hint = document.createElement('div');
   Object.assign(hint.style, { fontSize: '9px', letterSpacing: '1px', color: '#6a8090' });
-  hint.textContent = 'Drag canvas to pan  ·  Scroll to zoom  ·  Right-click canvas to add  ·  Click connection to select  ·  Del to remove';
+  hint.textContent = 'Drag canvas to pan  ·  Scroll to S.getZoom()  ·  Right-click canvas to add  ·  Click connection to select  ·  Del to remove';
   bar.appendChild(hint);
 
   var al = document.createElement('div');
@@ -1141,1479 +1153,6 @@ function buildTopBar() {
   });
   bar.appendChild(al);
   return bar;
-}
-
-// ---------------------------------------------------------------------------
-// Left Panel
-// ---------------------------------------------------------------------------
-
-function buildLeftPanel() {
-  var panel = document.createElement('div');
-  panel.id = 'mr-left';
-  Object.assign(panel.style, {
-    width: '280px', minWidth: '240px', maxWidth: '320px', flexShrink: '0',
-    display: 'flex', flexDirection: 'column',
-    borderRight: '1px solid rgba(255,255,255,0.22)',
-    background: 'rgba(4,8,14,0.5)',
-  });
-
-  var tabs = document.createElement('div');
-  Object.assign(tabs.style, { display: 'flex', borderBottom: '1px solid rgba(255,255,255,0.20)', flexShrink: '0' });
-  ['General', 'Node', 'Path'].forEach(function(label, i) {
-    var key = label.toLowerCase().replace(' ', '_');
-    var modeVal = key === 'node' ? 'node_detail' : key;
-    var tab = document.createElement('div');
-    tab.id = 'mr-tab-' + key;
-    Object.assign(tab.style, {
-      flex: '1', padding: '10px 0', textAlign: 'center',
-      fontSize: '9px', letterSpacing: '2px', textTransform: 'uppercase',
-      cursor: 'pointer', transition: 'all 0.2s ease',
-      color: i === 0 ? ACCENT : '#7a9aaa',
-      borderBottom: i === 0 ? '2px solid ' + ACCENT : '2px solid transparent',
-    });
-    tab.textContent = label;
-    tab.addEventListener('click', function() {
-      leftMode = modeVal;
-      refreshLeftPanel();
-    });
-    tabs.appendChild(tab);
-  });
-  panel.appendChild(tabs);
-
-  // Status badge strip — always visible below tabs
-  var statusStrip = document.createElement('div');
-  Object.assign(statusStrip.style, {
-    display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-    padding: '6px 14px', flexShrink: '0',
-    borderBottom: '1px solid rgba(255,255,255,0.08)',
-    background: 'rgba(0,0,0,0.2)',
-  });
-  var jobLabel = document.createElement('div');
-  Object.assign(jobLabel.style, { fontSize: '9px', color: '#7a9aaa', letterSpacing: '0.5px' });
-  jobLabel.id = 'mr-strip-job';
-  jobLabel.textContent = general.jobNumber || '—';
-  var statusBadge = document.createElement('div');
-  statusBadge.id = 'mr-g-status-badge';
-  Object.assign(statusBadge.style, {
-    fontSize: '8px', fontWeight: '700', letterSpacing: '1.5px',
-    textTransform: 'uppercase', padding: '2px 8px', borderRadius: '2px',
-    border: '1px solid', transition: 'all 0.2s ease',
-  });
-  statusStrip.appendChild(jobLabel);
-  statusStrip.appendChild(statusBadge);
-  panel.appendChild(statusStrip);
-
-  var content = document.createElement('div');
-  content.id = 'mr-left-content';
-  Object.assign(content.style, { flex: '1', overflowY: 'auto', padding: '16px' });
-  panel.appendChild(content);
-  return panel;
-}
-
-function refreshLeftPanel() {
-  var gTab = document.getElementById('mr-tab-general');
-  var nTab = document.getElementById('mr-tab-node');
-  var pTab = document.getElementById('mr-tab-path');
-  [
-    { el: gTab, mode: 'general'     },
-    { el: nTab, mode: 'node_detail' },
-    { el: pTab, mode: 'path'        },
-  ].forEach(function(t) {
-    if (!t.el) return;
-    var active = leftMode === t.mode;
-    t.el.style.color        = active ? ACCENT : '#7a9aaa';
-    t.el.style.borderBottom = active ? '2px solid ' + ACCENT : '2px solid transparent';
-  });
-
-  var content = document.getElementById('mr-left-content');
-  if (!content) return;
-  content.innerHTML = '';
-
-  if (leftMode === 'general') {
-    content.appendChild(buildGeneralInputs());
-  } else if (leftMode === 'node_detail') {
-    var node = nodes.find(function(n) { return n.id === selectedId; });
-    if (node) {
-      content.appendChild(buildNodeDetail(node));
-    } else {
-      var ph = document.createElement('div');
-      Object.assign(ph.style, { color: '#607888', fontSize: '10px', textAlign: 'center', marginTop: '40px' });
-      ph.textContent = 'Click a node to edit its parameters';
-      content.appendChild(ph);
-    }
-  } else if (leftMode === 'path') {
-    var conn = connections.find(function(c) { return c.id === selectedConnId; });
-    if (conn) {
-      content.appendChild(buildPathDetail(conn));
-    } else {
-      var ph2 = document.createElement('div');
-      Object.assign(ph2.style, { color: '#607888', fontSize: '10px', textAlign: 'center', marginTop: '40px', lineHeight: '1.8' });
-      ph2.textContent = 'Click a connection to edit its path settings';
-      content.appendChild(ph2);
-    }
-  }
-}
-
-function buildGeneralInputs() {
-  var wrap = document.createElement('div');
-  Object.assign(wrap.style, { display: 'flex', flexDirection: 'column', gap: '18px' });
-
-  wrap.appendChild(buildInputSection('Document', [
-    buildTextInput('Job Number',  'mr-g-job',  general.jobNumber,  function(v) {
-      general.jobNumber = v;
-      var s = document.getElementById('mr-strip-job');
-      if (s) s.textContent = v || '—';
-    }),
-    buildTextInput('Part Number', 'mr-g-pn',   general.partNumber, function(v) { general.partNumber = v; }),
-    buildTextInput('Part Name',   'mr-g-pname',general.partName,   function(v) { general.partName   = v; }),
-    buildTextInput('Revision',    'mr-g-rev',  general.revision,   function(v) { general.revision   = v; }),
-  ]));
-
-  wrap.appendChild(buildInputSection('People', [
-    buildTextInput('Customer',   'mr-g-customer', general.customer, function(v) { general.customer = v; }),
-    buildTextInput('Engineer',   'mr-g-engineer', general.engineer, function(v) { general.engineer = v; }),
-  ]));
-
-  wrap.appendChild(buildInputSection('Status', [
-    buildTextInput('Date',  'mr-g-date', general.dateCreated, function(v) { general.dateCreated = v; }),
-    buildSelectEl('Status', 'mr-g-status', [
-      { value: 'draft',     label: 'Draft'      },
-      { value: 'review',    label: 'In Review'  },
-      { value: 'approved',  label: 'Approved'   },
-      { value: 'released',  label: 'Released'   },
-      { value: 'obsolete',  label: 'Obsolete'   },
-    ], general.status, function(v) { general.status = v; refreshStatusBadge(); }),
-  ]));
-
-  wrap.appendChild(buildInputSection('Notes', [
-    buildTextareaInput('Notes', 'mr-g-notes', general.notes, function(v) { general.notes = v; }),
-  ]));
-
-  return wrap;
-}
-
-// Convert SI-stored value to display value for a given unitType
-function toDisplay(v, unitType) {
-  if (unitType === 'length')  return unitSystem === 'imperial' ? round3(v / 25.4) : v;
-  if (unitType === 'temp')    return unitSystem === 'imperial' ? round3(v * 9 / 5 + 32) : v;
-  if (unitType === 'density') return unitSystem === 'imperial' ? round3(v * 0.036127) : v;
-  return v;
-}
-function fromDisplay(v, unitType) {
-  if (unitType === 'length')  return unitSystem === 'imperial' ? round3(v * 25.4) : v;
-  if (unitType === 'temp')    return unitSystem === 'imperial' ? round3((v - 32) * 5 / 9) : v;
-  if (unitType === 'density') return unitSystem === 'imperial' ? round3(v / 0.036127) : v;
-  return v;
-}
-function unitSuffix(unitType) {
-  if (unitType === 'length')  return unitSystem === 'imperial' ? ' (in)'     : ' (mm)';
-  if (unitType === 'temp')    return unitSystem === 'imperial' ? ' (°F)'    : ' (°C)';
-  if (unitType === 'density') return unitSystem === 'imperial' ? ' (lb/in³)' : ' (g/cm³)';
-  return '';
-}
-function scaleParam(pd) {
-  if (!pd.unitType) return { min: pd.min, max: pd.max, step: pd.step || 1 };
-  if (pd.unitType === 'length' && unitSystem === 'imperial') {
-    return { min: round3(pd.min / 25.4), max: round3(pd.max / 25.4), step: round3((pd.step || 1) / 25.4) };
-  }
-  if (pd.unitType === 'temp' && unitSystem === 'imperial') {
-    return { min: round3(pd.min * 9/5 + 32), max: round3(pd.max * 9/5 + 32), step: pd.step ? round3(pd.step * 9/5) : 1 };
-  }
-  if (pd.unitType === 'density' && unitSystem === 'imperial') {
-    return { min: round3(pd.min * 0.036127), max: round3(pd.max * 0.036127), step: round3((pd.step || 0.01) * 0.036127) };
-  }
-  return { min: pd.min, max: pd.max, step: pd.step || 1 };
-}
-
-function buildNodeDetail(node) {
-  var def = NODE_DEFS[node.type];
-  var wrap = document.createElement('div');
-  Object.assign(wrap.style, { display: 'flex', flexDirection: 'column', gap: '16px' });
-
-  var badge = document.createElement('div');
-  Object.assign(badge.style, {
-    padding: '8px 12px', borderRadius: '3px',
-    background: def.color, border: '2px solid ' + def.borderColor,
-    fontSize: '10px', fontWeight: '700', letterSpacing: '2px',
-    textTransform: 'uppercase', color: def.textColor, textAlign: 'center',
-  });
-  badge.textContent = def.label;
-  wrap.appendChild(badge);
-
-  wrap.appendChild(buildInputSection('Label', [
-    buildTextInput('Label', 'mr-node-label', node.label || def.label, function(v) {
-      node.label = v; refreshNodeEl(node.id);
-    }),
-  ]));
-
-  if (def.paramDefs.length > 0) {
-    // Group paramDefs by section
-    var sections = [];
-    var currentSection = { title: 'Parameters', defs: [] };
-    def.paramDefs.forEach(function(pd) {
-      if (pd.section !== undefined) {
-        if (currentSection.defs.length > 0) sections.push(currentSection);
-        currentSection = { title: pd.section, defs: [], showWhen: pd.showWhen };
-      } else {
-        currentSection.defs.push(pd);
-      }
-    });
-    if (currentSection.defs.length > 0) sections.push(currentSection);
-
-    sections.forEach(function(sec) {
-      // ── Section-level conditional visibility ─────────────────────────────
-      if (sec.showWhen && !sec.showWhen(node.params)) return;
-
-      var fields = sec.defs.map(function(pd) {
-        // ── Field-level conditional visibility ───────────────────────────
-        if (pd.showWhen && !pd.showWhen(node.params)) return null;
-
-        // ── Cascading material family selector ────────────────────────────
-        if (pd.type === 'material_family') {
-          var familyOptions = Object.keys(MATERIAL_CATALOG).map(function(k) {
-            return { value: k, label: MATERIAL_CATALOG[k].label };
-          });
-          return buildSelectEl(pd.label, 'mr-nd-' + pd.key,
-            familyOptions,
-            node.params.materialFamily || 'carbon_steel',
-            function(v) {
-              node.params.materialFamily = v;
-              var cat = MATERIAL_CATALOG[v];
-              if (cat) {
-                node.params.grade   = cat.grades[0];
-                node.params.density = cat.densityDefault;
-              }
-              refreshRightPanel(); refreshCalcPanel(); refreshNodeEl(node.id);
-              refreshLeftPanel();   // re-render to update grade dropdown
-            }
-          );
-        }
-
-        // ── Grade dropdown — options driven by current materialFamily ─────
-        if (pd.type === 'grade_lookup') {
-          var cat = MATERIAL_CATALOG[node.params.materialFamily] || { grades: [] };
-          var gradeOptions = cat.grades.map(function(g) { return { value: g, label: g }; });
-          return buildSelectEl(pd.label, 'mr-nd-' + pd.key,
-            gradeOptions,
-            node.params.grade || (cat.grades[0] || ''),
-            function(v) {
-              node.params.grade = v;
-              refreshRightPanel(); refreshCalcPanel(); refreshNodeEl(node.id);
-            }
-          );
-        }
-
-        if (pd.type === 'select') {
-          // optionsFor allows dynamic option lists driven by other params
-          var selOpts = pd.optionsFor ? pd.optionsFor(node.params) : pd.options;
-          // If stored value is no longer valid, reset to first valid option
-          var selVal = node.params[pd.key];
-          if (selVal === undefined || selOpts.indexOf(selVal) === -1) {
-            selVal = selOpts[0];
-            node.params[pd.key] = selVal;
-          }
-          return buildSelectEl(pd.label, 'mr-nd-' + pd.key,
-            selOpts.map(function(o) { return { value: o, label: o.replace(/_/g, ' ') }; }),
-            selVal,
-            function(v) {
-              node.params[pd.key] = v;
-              refreshRightPanel(); refreshCalcPanel(); refreshNodeEl(node.id);
-              // refreshPanel: true means this field controls visibility of other fields
-              if (pd.refreshPanel) refreshLeftPanel();
-            }
-          );
-        }
-        if (pd.type === 'text') {
-          return buildTextInput(pd.label, 'mr-nd-' + pd.key,
-            node.params[pd.key] !== undefined ? node.params[pd.key] : '',
-            function(v) { node.params[pd.key] = v; }
-          );
-        }
-        // Number — convert to display units
-        var sc        = scaleParam(pd);
-        var dispVal   = toDisplay(node.params[pd.key] !== undefined ? node.params[pd.key] : 0, pd.unitType);
-        var fullLabel = pd.label + unitSuffix(pd.unitType);
-        return buildNumberInputEl(fullLabel, 'mr-nd-' + pd.key,
-          dispVal, sc.min, sc.max, sc.step,
-          function(v) {
-            node.params[pd.key] = fromDisplay(v, pd.unitType);
-            refreshRightPanel(); refreshCalcPanel(); refreshNodeEl(node.id);
-          }
-        );
-      });
-      wrap.appendChild(buildInputSection(sec.title, fields));
-    });
-  }
-
-  // Unit system note
-  var unitNote = document.createElement('div');
-  Object.assign(unitNote.style, {
-    fontSize: '8px', color: '#506070', letterSpacing: '0.5px',
-    textAlign: 'right', marginTop: '-8px',
-  });
-  unitNote.textContent = 'Values stored as SI · displaying ' + (unitSystem === 'imperial' ? 'Imperial' : 'Metric');
-  wrap.appendChild(unitNote);
-
-  var delBtn = document.createElement('button');
-  Object.assign(delBtn.style, {
-    marginTop: '8px', padding: '8px', background: 'rgba(239,68,68,0.08)',
-    border: '1px solid rgba(239,68,68,0.3)', borderRadius: '3px',
-    color: '#ef7777', fontSize: '10px', fontFamily: 'inherit',
-    letterSpacing: '1px', cursor: 'pointer', transition: 'all 0.2s ease',
-  });
-  delBtn.textContent = 'Delete Node';
-  delBtn.addEventListener('mouseenter', function() { delBtn.style.background = 'rgba(239,68,68,0.15)'; delBtn.style.borderColor = 'rgba(239,68,68,0.6)'; });
-  delBtn.addEventListener('mouseleave', function() { delBtn.style.background = 'rgba(239,68,68,0.08)'; delBtn.style.borderColor = 'rgba(239,68,68,0.3)'; });
-  delBtn.addEventListener('click', function() { deleteNode(node.id); });
-  wrap.appendChild(delBtn);
-
-  return wrap;
-}
-
-// ---------------------------------------------------------------------------
-// Path Detail (left panel when a connection is selected)
-// ---------------------------------------------------------------------------
-
-function buildPathDetail(conn) {
-  var fromNode = nodes.find(function(n) { return n.id === conn.fromId; });
-  var toNode   = nodes.find(function(n) { return n.id === conn.toId;   });
-  var fromDef  = fromNode ? NODE_DEFS[fromNode.type] : null;
-  var toDef    = toNode   ? NODE_DEFS[toNode.type]   : null;
-
-  var wrap = document.createElement('div');
-  Object.assign(wrap.style, { display: 'flex', flexDirection: 'column', gap: '20px' });
-
-  // ── Connection badge ─────────────────────────────────────────────────────
-  var badge = document.createElement('div');
-  Object.assign(badge.style, {
-    display: 'flex', alignItems: 'center', gap: '10px',
-    padding: '10px 12px', borderRadius: '3px',
-    background: 'rgba(255,255,255,0.03)',
-    border: '1px solid rgba(255,255,255,0.12)',
-  });
-
-  function nodePill(def, node) {
-    var pill = document.createElement('div');
-    Object.assign(pill.style, {
-      flex: '1', padding: '5px 8px', borderRadius: '2px', textAlign: 'center',
-      background: def ? def.color : 'rgba(255,255,255,0.05)',
-      border: '1px solid ' + (def ? def.borderColor : 'rgba(255,255,255,0.2)'),
-      fontSize: '8px', fontWeight: '700', letterSpacing: '1.5px',
-      textTransform: 'uppercase', color: def ? def.textColor : '#aabbcc',
-    });
-    pill.textContent = (node && node.label) || (def && def.label) || '—';
-    return pill;
-  }
-  var arr = document.createElement('div');
-  Object.assign(arr.style, { color: '#4a6070', fontSize: '14px', flexShrink: '0' });
-  arr.textContent = '→';
-
-  badge.appendChild(nodePill(fromDef, fromNode));
-  badge.appendChild(arr);
-  badge.appendChild(nodePill(toDef, toNode));
-  wrap.appendChild(badge);
-
-  // ── Cycle count ──────────────────────────────────────────────────────────
-  var cycleSection = buildInputSection('Cycle Count', []);
-  wrap.appendChild(cycleSection);
-
-  var cycleDesc = document.createElement('div');
-  Object.assign(cycleDesc.style, {
-    fontSize: '9px', color: '#7a9aaa', lineHeight: '1.6', marginBottom: '12px',
-  });
-  cycleDesc.textContent = 'Repeat the destination node N times before continuing. Mass from each pass feeds the next.';
-  cycleSection.appendChild(cycleDesc);
-
-  var btnRow = document.createElement('div');
-  Object.assign(btnRow.style, { display: 'flex', gap: '6px', marginBottom: '10px' });
-
-  [1, 2, 3, 4, 5, 6].forEach(function(n) {
-    var btn = document.createElement('button');
-    var isActive = (conn.cycle || 1) === n;
-    Object.assign(btn.style, {
-      flex: '1', padding: '7px 0', borderRadius: '2px', cursor: 'pointer',
-      fontSize: '10px', fontWeight: '700', letterSpacing: '1px',
-      border: '1px solid ' + (isActive ? ACCENT : 'rgba(255,255,255,0.18)'),
-      background: isActive ? ACCENT_DIM + '0.15)' : 'transparent',
-      color: isActive ? ACCENT : '#7a9aaa',
-      transition: 'all 0.15s ease',
-    });
-    btn.textContent = n + 'x';
-    btn.addEventListener('click', function() {
-      conn.cycle = n;
-      refreshConnections();
-      refreshRightPanel(); refreshCalcPanel();
-      refreshLeftPanel();   // re-render buttons with new active state
-    });
-    btnRow.appendChild(btn);
-  });
-  cycleSection.appendChild(btnRow);
-
-  // Preview of what the cycle means
-  var preview = document.createElement('div');
-  Object.assign(preview.style, {
-    padding: '10px 12px', borderRadius: '3px',
-    background: 'rgba(255,255,255,0.02)',
-    border: '1px solid rgba(255,255,255,0.10)',
-    fontSize: '9px', color: '#7a9aaa', lineHeight: '1.8',
-  });
-  var toLabel = (toNode && (toNode.label || (toDef && toDef.label))) || 'node';
-  var cyc = conn.cycle || 1;
-  if (cyc === 1) {
-    preview.textContent = 'No repetition — passes through ' + toLabel + ' once.';
-  } else {
-    var seq = [];
-    for (var i = 0; i < cyc; i++) seq.push(toLabel + ' [pass ' + (i + 1) + ']');
-    preview.textContent = seq.join('  →  ');
-  }
-  cycleSection.appendChild(preview);
-
-  // ── Delete connection ────────────────────────────────────────────────────
-  var delBtn = document.createElement('button');
-  Object.assign(delBtn.style, {
-    marginTop: 'auto', padding: '9px', borderRadius: '2px', cursor: 'pointer',
-    background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.28)',
-    color: '#ef9999', fontSize: '9px', letterSpacing: '1.5px', textTransform: 'uppercase',
-    transition: 'all 0.2s ease',
-  });
-  delBtn.textContent = 'Delete Connection';
-  delBtn.addEventListener('mouseenter', function() { delBtn.style.background = 'rgba(239,68,68,0.18)'; });
-  delBtn.addEventListener('mouseleave', function() { delBtn.style.background = 'rgba(239,68,68,0.08)'; });
-  delBtn.addEventListener('click', function() { deleteConn(conn.id); });
-  wrap.appendChild(delBtn);
-
-  return wrap;
-}
-
-// ---------------------------------------------------------------------------
-// Canvas Panel
-// ---------------------------------------------------------------------------
-
-function buildCanvasPanel() {
-  var panel = document.createElement('div');
-  panel.id = 'mr-canvas-panel';
-  Object.assign(panel.style, {
-    flex: '1', position: 'relative', overflow: 'hidden',
-    background: '#070d14',
-    cursor: 'default',
-  });
-
-  // Dot-grid rendered on the panel itself (doesn't move with pan)
-  // We'll update backgroundPosition to track the pan for a nice parallax effect
-  panel.style.backgroundImage = 'radial-gradient(circle, rgba(255,255,255,0.055) 1px, transparent 1px)';
-  panel.style.backgroundSize = '28px 28px';
-
-  // World layer — everything inside this gets panned + zoomed
-  var wl = document.createElement('div');
-  wl.id = 'mr-world';
-  Object.assign(wl.style, {
-    position: 'absolute', top: '0', left: '0',
-    width: '0', height: '0',   // zero-size, contents overflow
-    transformOrigin: '0 0',
-    willChange: 'transform',
-  });
-  panel.appendChild(wl);
-  worldLayer = wl;
-
-  // SVG layer inside world
-  var svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
-  svg.id = 'mr-svg';
-  Object.assign(svg.style, {
-    position: 'absolute', top: '0', left: '0',
-    width: '8000px', height: '8000px',
-    pointerEvents: 'none', overflow: 'visible',
-  });
-  svg.innerHTML = '<defs><marker id="mr-arrow" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto"><path d="M0,0 L0,6 L8,3 z" fill="rgba(255,255,255,0.25)"/></marker></defs>';
-  wl.appendChild(svg);
-  svgLayer = svg;
-
-  // Nodes layer inside world
-  var nl = document.createElement('div');
-  nl.id = 'mr-nodes';
-  Object.assign(nl.style, { position: 'absolute', top: '0', left: '0' });
-  wl.appendChild(nl);
-  nodesLayer = nl;
-
-  panel.addEventListener('contextmenu', onCanvasContextMenu);
-  panel.addEventListener('mousedown',   onCanvasMouseDown);
-  panel.addEventListener('wheel',       onCanvasWheel, { passive: false });
-
-  canvasArea = panel;
-  return panel;
-}
-
-function applyWorldTransform() {
-  if (!worldLayer) return;
-  worldLayer.style.transform = 'translate(' + panX + 'px, ' + panY + 'px) scale(' + zoom + ')';
-  if (canvasArea) {
-    canvasArea.style.backgroundPosition = (panX % 28) + 'px ' + (panY % 28) + 'px';
-  }
-  updateZoomIndicator();
-}
-
-function updateZoomIndicator() {
-  var el = document.getElementById('mr-zoom-indicator');
-  if (el) el.textContent = Math.round(zoom * 100) + '%';
-}
-
-// ---------------------------------------------------------------------------
-// Right Panel
-// ---------------------------------------------------------------------------
-
-function buildRightPanel() {
-  var panel = document.createElement('div');
-  panel.id = 'mr-right';
-  Object.assign(panel.style, {
-    width: '300px', minWidth: '260px', maxWidth: '360px', flexShrink: '0',
-    display: 'flex', flexDirection: 'column',
-    borderLeft: '1px solid rgba(255,255,255,0.22)',
-    background: 'rgba(4,8,14,0.5)',
-  });
-
-  var hdr = document.createElement('div');
-  Object.assign(hdr.style, {
-    padding: '12px 16px', borderBottom: '1px solid rgba(255,255,255,0.20)',
-    fontSize: '9px', letterSpacing: '2.5px', textTransform: 'uppercase', color: ACCENT, flexShrink: '0',
-  });
-  hdr.textContent = 'Estimates';
-  panel.appendChild(hdr);
-
-  var content = document.createElement('div');
-  content.id = 'mr-right-content';
-  Object.assign(content.style, { flex: '1', overflowY: 'auto', padding: '14px' });
-  panel.appendChild(content);
-
-  showRightPlaceholder();
-  return panel;
-}
-
-function showRightPlaceholder() {
-  var content = document.getElementById('mr-right-content');
-  if (!content) return;
-  content.innerHTML = '';
-  var ph = document.createElement('div');
-  Object.assign(ph.style, { color: '#607888', fontSize: '10px', textAlign: 'center', marginTop: '40px', lineHeight: '1.8' });
-  ph.textContent = 'Connect a Stock In node to begin';
-  content.appendChild(ph);
-}
-
-// ---------------------------------------------------------------------------
-// General Calculations Panel (full-width strip below the three panels)
-// ---------------------------------------------------------------------------
-
-// ===========================================================================
-// GENERAL CALCULATIONS PANEL
-// ===========================================================================
-//
-// Layout: full-width panel, vertical scroll.
-// Each step is a full-width block.
-// Each calculation within a step has:
-//   - Title + one-line description of what/why
-//   - Symbolic formula
-//   - Same formula with numbers substituted in
-//   - Answer (highlighted)
-
-function buildCalcPanel() {
-  var panel = document.createElement('div');
-  panel.id = 'mr-calc-panel';
-  Object.assign(panel.style, {
-    height: '280px', minHeight: '220px',
-    flexShrink: '0',
-    display: 'flex', flexDirection: 'column',
-    borderTop: '2px solid rgba(255,255,255,0.22)',
-    background: 'rgba(3,6,10,0.92)',
-    position: 'relative', zIndex: '2',
-  });
-
-  // Header
-  var hdr = document.createElement('div');
-  Object.assign(hdr.style, {
-    display: 'flex', alignItems: 'center', gap: '16px',
-    padding: '0 28px', height: '38px', minHeight: '38px',
-    borderBottom: '1px solid rgba(255,255,255,0.18)',
-    flexShrink: '0',
-  });
-  var htitle = document.createElement('div');
-  Object.assign(htitle.style, { fontSize: '9px', letterSpacing: '2.5px', textTransform: 'uppercase', color: ACCENT });
-  htitle.textContent = 'Summary Calculations';
-  hdr.appendChild(htitle);
-  var hsep = document.createElement('div');
-  Object.assign(hsep.style, { flex: '1', height: '1px', background: 'rgba(255,255,255,0.14)' });
-  hdr.appendChild(hsep);
-  var hnote = document.createElement('div');
-  Object.assign(hnote.style, { fontSize: '9px', letterSpacing: '1px', color: '#607888' });
-  hnote.textContent = 'Full step-by-step workings  ·  scroll ↕ for all steps';
-  hdr.appendChild(hnote);
-  panel.appendChild(hdr);
-
-  // Scrollable body
-  var content = document.createElement('div');
-  content.id = 'mr-calc-content';
-  Object.assign(content.style, {
-    flex: '1', overflowY: 'auto', overflowX: 'hidden',
-    padding: '0',
-  });
-  var ph = document.createElement('div');
-  Object.assign(ph.style, { color: '#607888', fontSize: '10px', textAlign: 'center', padding: '32px' });
-  ph.textContent = 'Connect a Stock In node to begin';
-  content.appendChild(ph);
-  panel.appendChild(content);
-  return panel;
-}
-
-function refreshCalcPanel() {
-  var content = document.getElementById('mr-calc-content');
-  if (!content) return;
-  content.innerHTML = '';
-
-  var chain = computeChain();
-  if (chain.length === 0) {
-    var ph = document.createElement('div');
-    Object.assign(ph.style, { color: '#607888', fontSize: '10px', textAlign: 'center', padding: '32px' });
-    ph.textContent = 'Connect a Stock In node to begin';
-    content.appendChild(ph);
-    return;
-  }
-
-  chain.forEach(function(step, idx) {
-    var def = NODE_DEFS[step.nodeType] || {};
-    var isSelected = step.nodeId === selectedId;
-    var workings = buildStepWorkings(step);
-
-    // ── Step block ──────────────────────────────────────────────────────────
-    var block = document.createElement('div');
-    Object.assign(block.style, {
-      borderBottom: '1px solid rgba(255,255,255,0.16)',
-      background: isSelected ? 'rgba(255,255,255,0.055)' : 'transparent',
-      transition: 'background 0.2s ease',
-      cursor: 'pointer',
-    });
-    block.addEventListener('click', function() { selectNode(step.nodeId); });
-
-    // Step header bar (full-width, color-coded to node type)
-    var stepHdr = document.createElement('div');
-    Object.assign(stepHdr.style, {
-      display: 'flex', alignItems: 'center', gap: '12px',
-      padding: '8px 28px',
-      background: isSelected
-        ? (def.color ? def.color : 'rgba(255,255,255,0.04)')
-        : 'rgba(255,255,255,0.03)',
-      borderLeft: '3px solid ' + (def.borderColor || '#445566'),
-    });
-
-    // Step number
-    var numEl = document.createElement('div');
-    Object.assign(numEl.style, {
-      fontSize: '9px', fontWeight: '700', color: def.textColor || '#667788',
-      minWidth: '24px',
-    });
-    numEl.textContent = 'STEP ' + (idx + 1);
-
-    // Step name
-    var nameEl = document.createElement('div');
-    Object.assign(nameEl.style, {
-      fontSize: '10px', fontWeight: '700', letterSpacing: '1.5px',
-      textTransform: 'uppercase', color: def.textColor || '#aabbcc',
-      flex: '1',
-    });
-    nameEl.textContent = step.label;
-
-    // Cycle badge
-    if (step.isCycle) {
-      var cycleBadge = document.createElement('div');
-      Object.assign(cycleBadge.style, {
-        fontSize: '8px', fontWeight: '700', letterSpacing: '1px',
-        padding: '2px 6px', borderRadius: '2px',
-        background: ACCENT_DIM + '0.15)', border: '1px solid ' + ACCENT_DIM + '0.4)',
-        color: ACCENT, flexShrink: '0',
-      });
-      cycleBadge.textContent = 'CYCLE';
-      stepHdr.appendChild(nameEl);
-      stepHdr.appendChild(cycleBadge);
-    } else {
-      stepHdr.appendChild(nameEl);
-    }
-    var flowTag = document.createElement('div');
-    Object.assign(flowTag.style, {
-      fontSize: '9px', color: '#8899aa', display: 'flex', alignItems: 'center', gap: '8px',
-    });
-    var massInEl = document.createElement('span');
-    massInEl.textContent = step.nodeType === 'stock_in' ? '— kg in' : step.massIn + ' kg in';
-    var arrEl = document.createElement('span');
-    Object.assign(arrEl.style, { color: '#607888' });
-    arrEl.textContent = '→';
-    var massOutEl = document.createElement('span');
-    Object.assign(massOutEl.style, { color: step.massLoss > 0 ? '#e9c46a' : '#80d090', fontWeight: '700' });
-    massOutEl.textContent = step.massOut + ' kg out';
-    flowTag.appendChild(massInEl); flowTag.appendChild(arrEl); flowTag.appendChild(massOutEl);
-
-    // Loss badge
-    if (step.massLoss > 0) {
-      var lossBadge = document.createElement('div');
-      Object.assign(lossBadge.style, {
-        fontSize: '8px', letterSpacing: '1px', padding: '2px 8px',
-        background: step.lossPct > 10 ? 'rgba(239,68,68,0.12)' : 'rgba(233,196,106,0.10)',
-        border: '1px solid ' + (step.lossPct > 10 ? 'rgba(239,68,68,0.3)' : 'rgba(233,196,106,0.25)'),
-        color: step.lossPct > 10 ? '#ef8888' : '#e9c46a',
-        borderRadius: '2px',
-      });
-      lossBadge.textContent = '−' + step.lossPct + '% loss';
-      flowTag.appendChild(lossBadge);
-    }
-
-    stepHdr.appendChild(numEl);
-    // nameEl already appended inside the isCycle branch above
-    if (!step.isCycle) {
-      // Non-cycle: nameEl was appended in the else branch, flowTag comes after
-    }
-    stepHdr.appendChild(flowTag);
-    block.appendChild(stepHdr);
-
-    // Workings grid (full-width row of calc cells)
-    var grid = document.createElement('div');
-    Object.assign(grid.style, {
-      display: 'flex', flexDirection: 'row', flexWrap: 'wrap',
-      padding: '10px 28px 14px',
-      gap: '10px',
-      borderLeft: '3px solid rgba(255,255,255,0.10)',
-      background: 'rgba(0,0,0,0.15)',
-    });
-
-    workings.forEach(function(w, wi) {
-      var cell = document.createElement('div');
-      Object.assign(cell.style, {
-        minWidth: '200px', flex: '1',
-        padding: '10px 14px',
-        marginRight: wi < workings.length - 1 ? '10px' : '0',
-        display: 'flex', flexDirection: 'column', gap: '3px',
-        background: 'rgba(255,255,255,0.04)',
-        borderRadius: '4px',
-        border: '1px solid rgba(255,255,255,0.10)',
-      });
-
-      // Title
-      var wTitle = document.createElement('div');
-      Object.assign(wTitle.style, {
-        fontSize: '8px', fontWeight: '700', letterSpacing: '1.5px',
-        textTransform: 'uppercase', color: '#aabbcc',
-        marginBottom: '2px',
-      });
-      wTitle.textContent = (idx + 1) + '.' + (wi + 1) + '  ' + w.title;
-
-      // Description
-      var wDesc = document.createElement('div');
-      Object.assign(wDesc.style, {
-        fontSize: '9px', color: '#7a9aaa', lineHeight: '1.4',
-        marginBottom: '6px',
-      });
-      wDesc.textContent = w.desc;
-
-      // Symbolic formula
-      var wSym = document.createElement('div');
-      Object.assign(wSym.style, {
-        fontSize: '10px', color: '#8aa0b0',
-        fontFamily: "'Consolas','SF Mono',monospace",
-        letterSpacing: '0.3px', lineHeight: '1.5',
-      });
-      wSym.textContent = w.symbolic;
-
-      // Substituted formula (numbers)
-      var wSub = document.createElement('div');
-      Object.assign(wSub.style, {
-        fontSize: '10px', color: '#a0b8c8',
-        fontFamily: "'Consolas','SF Mono',monospace",
-        letterSpacing: '0.3px', lineHeight: '1.5',
-      });
-      wSub.textContent = w.substituted;
-
-      // Divider line
-      var divLine = document.createElement('div');
-      Object.assign(divLine.style, {
-        height: '1px', background: 'rgba(255,255,255,0.18)',
-        margin: '5px 0',
-      });
-
-      // Answer
-      var wAns = document.createElement('div');
-      Object.assign(wAns.style, {
-        fontSize: '13px', fontWeight: '700', color: '#ddeeff',
-        fontFamily: "'Consolas','SF Mono',monospace",
-        letterSpacing: '0.5px',
-      });
-      wAns.textContent = '= ' + w.answer;
-
-      cell.appendChild(wTitle);
-      cell.appendChild(wDesc);
-      cell.appendChild(wSym);
-      cell.appendChild(wSub);
-      cell.appendChild(divLine);
-      cell.appendChild(wAns);
-      grid.appendChild(cell);
-    });
-
-    block.appendChild(grid);
-    content.appendChild(block);
-  });
-}
-
-// ---------------------------------------------------------------------------
-// buildStepWorkings — returns array of:
-//   { title, desc, symbolic, substituted, answer }
-// ---------------------------------------------------------------------------
-
-function buildStepWorkings(step) {
-  var p   = (nodes.find(function(n) { return n.id === step.nodeId; }) || {}).params || {};
-  var out = [];
-
-  function w(title, desc, symbolic, substituted, answer) {
-    out.push({ title: title, desc: desc, symbolic: symbolic, substituted: substituted, answer: answer });
-  }
-
-  switch (step.nodeType) {
-
-    case 'stock_in': {
-      var geomW = p.geometry || 'round_cylinder';
-      var densW = p.density || general.density;
-      var Lw    = p.length || 0;
-      var qty   = p.quantity || 1;
-      var Aw, vol_mm3w, shapeDesc, volFormula, volSubst;
-
-      if (geomW === 'rectangular_prism') {
-        var Ww = p.width || 0; var Hw = p.sectionHeight || 0;
-        Aw = Ww * Hw;
-        vol_mm3w = Aw * Lw;
-        shapeDesc = dLen(Ww) + ' W × ' + dLen(Hw) + ' H × ' + dLen(Lw) + ' L';
-        volFormula = 'V = W × H × L';
-        volSubst   = 'V = ' + dLen(Ww) + ' × ' + dLen(Hw) + ' × ' + dLen(Lw);
-      } else if (geomW === 'round_corner_square') {
-        var Sw = p.side || 0; var Rw = p.cornerRadius || 0;
-        Aw = Math.max(0, Sw * Sw - (4 - Math.PI) * Rw * Rw);
-        Aw = round3(Aw);
-        vol_mm3w = Aw * Lw;
-        shapeDesc = dLen(Sw) + ' side  ×  ' + dLen(Lw) + ' L  (R ' + dLen(Rw) + ' corners)';
-        volFormula = 'A_RCS = S² − (4−π)·R²,  V = A × L';
-        volSubst   = 'A = ' + dLen(Sw) + '² − (4−π)×' + dLen(Rw) + '² = ' + Aw + '  ·  V = A × ' + dLen(Lw);
-      } else {
-        var Dw = p.diameter || 0; var rw = Dw / 2;
-        Aw = round3(Math.PI * rw * rw);
-        vol_mm3w = round3(Math.PI * rw * rw * Lw);
-        shapeDesc = dLen(Dw) + ' Ø × ' + dLen(Lw) + ' L';
-        volFormula = 'V = π × (D ÷ 2)² × L';
-        volSubst   = 'V = π × (' + dLen(Dw) + ' ÷ 2)² × ' + dLen(Lw);
-      }
-      vol_mm3w = round3(vol_mm3w);
-      var vol_cm3w = round3(vol_mm3w / 1e6);
-      var mPc      = round3(vol_cm3w * densW);
-      var mTotW    = round3(mPc * qty);
-
-      w('Procurement',
-        'Purchase order, heat and lot numbers, supplier, and mill certification — traceability chain for the raw material.',
-        '—',
-        'PO: ' + (p.poNumber||'—') + '  ·  Heat: ' + (p.heatNumber||'—') + '  ·  Supplier: ' + (p.supplier||'—'),
-        p.certNumber ? 'Cert: ' + p.certNumber : 'No cert recorded');
-
-      w('Stock Type',
-        'Ingots are as-cast. Billets are partially-wrought — previously forged or rolled from an ingot, giving finer grain and less porosity.',
-        '—',
-        (p.stockType||'billet'),
-        (p.stockType||'billet'));
-
-      w('Material & Condition',
-        'Alloy grade and incoming metallurgical condition. Affects forgeability window, die load, and required preheat temperature.',
-        '—',
-        (p.grade||'—') + '  ·  ' + ((MATERIAL_CATALOG[p.materialFamily]||{}).label||'') + '  ·  ' + (p.condition||'').replace(/_/g,' '),
-        'ρ = ' + dDensity(densW));
-
-      w('Prior Processing',
-        'Manufacturing origin and any heat treatment already applied. Ingot-cast stock has coarser grain; previously forged billets have superior grain structure.',
-        '—',
-        (p.mfgMethod||'').replace(/_/g,' ') + '  ·  Prior HT: ' + (p.priorHT||'none').replace(/_/g,' ') +
-          (p.grainSize ? '  ·  Grain: ASTM ' + p.grainSize : '') +
-          '  ·  Grain dir: ' + (p.grainDir||'').replace(/_/g,' '),
-        (p.mfgMethod||'—').replace(/_/g,' '));
-
-      w('Cross-Section Geometry',
-        'Incoming stock cross-section. Round cylinder: standard bar/billet. Rectangular prism: slab or flat. Round-corner square (RCS): octagonal-emphasis square with chamfered corners — common for large alloy steel billets.',
-        '—',
-        geomW.replace(/_/g,' ') + '  ·  ' + shapeDesc,
-        geomW.replace(/_/g,' '));
-
-      w('Cross-Section Area',
-        'Area of one cross-section slice — basis for volume calculation.',
-        'A (see formula for shape)',
-        volSubst,
-        Aw + ' ' + dLenUnit() + '²');
-
-      w('Volume per Piece',
-        'Cross-section area × length = total piece volume.',
-        volFormula,
-        volSubst + '  ×  ' + dLen(Lw),
-        dVol(vol_mm3w));
-
-      w('Mass per Piece',
-        'Volume converted to mass using the alloy density (' + dDensity(densW) + ').',
-        'M = V_cm³ × ρ ÷ 1000',
-        'M = ' + vol_cm3w + ' cm³ × ' + densW + ' ÷ 1000',
-        dMass(mPc));
-
-      w('Total Incoming Mass',
-        'Total mass of all pieces entering the process for this order.',
-        'M_total = M_pc × qty',
-        'M_total = ' + dMass(mPc) + ' × ' + qty,
-        dMass(mTotW));
-      break;
-    }
-
-    case 'cut': {
-      var geomCW  = step.dimsIn.geometry || 'round_cylinder';
-      var densW2  = general.density;
-      var AcW;
-      if (geomCW === 'rectangular_prism') {
-        AcW = (step.dimsIn.width || 0) * (step.dimsIn.height || 0);
-      } else {
-        var DcW = step.dimsIn.diameter || 0;
-        AcW = round3(Math.PI * Math.pow(DcW / 2, 2));
-      }
-      var cropHW  = p.cropBothEnds === 'yes' ? (p.cropHeadMm || 0) : 0;
-      var cropTW  = p.cropBothEnds === 'yes' ? (p.cropTailMm || 0) : 0;
-      var kerfW   = p.kerfMm || 0;
-      var nCuts   = (p.numPieces || 1) + (p.cropBothEnds === 'yes' ? 1 : 0);
-      var kLoss   = round3(AcW * kerfW * nCuts / 1e6 * densW2);
-      var cLoss   = round3(AcW * (cropHW + cropTW) / 1e6 * densW2);
-
-      w('Purpose',
-        'Cut to length: size the billet/ingot to the required blank length for forging. Crop ends: remove the head and tail of an ingot or billet — these zones contain shrinkage pipe, segregation, and inclusion-rich material that must be discarded before forging. Section: divide a large piece into multiple forgeable billets.',
-        '—',
-        (p.purpose||'cut_to_length').replace(/_/g,' '),
-        (p.purpose||'cut_to_length').replace(/_/g,' '));
-
-      w('Saw Setup',
-        'Band saw is most common for large billet cross-sections — slow but economical on blade life and kerf. Cold saw uses a toothed disc and produces a very clean, square cut with minimal kerf.',
-        '—',
-        (p.sawType||'band_saw').replace(/_/g,' ') + '  ·  blade: ' + (p.bladeType||'bi_metal').replace(/_/g,' ') + '  ·  coolant: ' + (p.coolant||'flood'),
-        (p.sawType||'band_saw').replace(/_/g,' '));
-
-      w('Crop Loss',
-        'Crop ends are discarded material from the head and tail of the ingot or billet. The head contains the shrinkage pipe (voids from solidification). The tail can contain segregation, inclusions, and poor-grain zones. Cropping is mandatory for quality forgings.',
-        'M_crop = A_cs × (L_head + L_tail) ÷ 1 000 000 × ρ',
-        'M_crop = ' + AcW + ' × (' + dLen(cropHW) + ' + ' + dLen(cropTW) + ') ÷ 1 000 000 × ' + densW2,
-        dMass(cLoss));
-
-      w('Kerf Loss',
-        'Material consumed by the saw blade on each cut. Kerf = blade thickness. For large billets, kerf per cut can represent significant mass — especially on high-alloy materials.',
-        'M_kerf = A_cs × kerf × n_cuts ÷ 1 000 000 × ρ',
-        'M_kerf = ' + AcW + ' × ' + dLen(kerfW) + ' × ' + nCuts + ' cuts ÷ 1 000 000 × ' + densW2,
-        dMass(kLoss));
-
-      w('Total Cut Loss',
-        'Sum of crop end loss and all kerf losses. This material is scrap — returned for remelt.',
-        'M_loss = M_crop + M_kerf',
-        'M_loss = ' + dMass(cLoss) + ' + ' + dMass(kLoss),
-        dMass(round3(cLoss + kLoss)));
-
-      w('Mass Out',
-        'Usable billet mass proceeding to the furnace.',
-        'M_out = M_in − M_loss',
-        'M_out = ' + dMass(step.massIn) + ' − ' + dMass(round3(cLoss + kLoss)),
-        dMass(step.massOut));
-      break;
-    }
-
-    case 'heat': {
-      var sLossPct = p.scaleLossPct || 0;
-      var sLoss    = round3(step.massIn * sLossPct / 100);
-      var mOut2    = round3(step.massIn - sLoss);
-
-      w('Furnace Setup',
-        'Gas furnaces are primary; electric is used for small or precision jobs. Atmosphere controls scale formation — air causes the most oxidation, nitrogen or controlled carbon dramatically reduces it.',
-        '—',
-        (p.furnaceType||'gas') + ' furnace  ·  atmosphere: ' + (p.atmosphere||'air') + '  ·  load: ' + (p.loadMethod||'batch').replace(/_/g,' '),
-        p.furnaceId ? 'Furnace ID: ' + p.furnaceId : (p.furnaceType||'gas') + ' furnace');
-
-      w('Scale (Oxidation) Loss',
-        'At forging temperature iron oxidises rapidly, forming iron-oxide scale (Fe₂O₃, Fe₃O₄) that flakes off. Air atmosphere: typically 1.5–3% loss. Nitrogen / controlled atmosphere: 0.2–0.5%.',
-        'M_scale = M_in × (scale% ÷ 100)',
-        'M_scale = ' + dMass(step.massIn) + ' × (' + sLossPct + ' ÷ 100)',
-        dMass(sLoss));
-
-      w('Mass After Heating',
-        'Mass entering the forge after scale loss — the effective billet mass for flash and forge-ratio calculations.',
-        'M_out = M_in − M_scale',
-        'M_out = ' + dMass(step.massIn) + ' − ' + dMass(sLoss),
-        dMass(mOut2));
-
-      w('Forging Temperature Window',
-        'Forge within this range. Below T_min: material is too stiff, risk of cracking, excessive press loads. Above T_target: grain growth, possible burning or liquation in high-alloy steels.',
-        'T_min  ≤  T_forge  ≤  T_target',
-        dTemp(p.minTemp||0) + '  ≤  T_forge  ≤  ' + dTemp(p.targetTemp||0),
-        'Target: ' + dTemp(p.targetTemp||0));
-
-      w('Soak Time',
-        'Soak ensures thermal equilibration through the cross-section. Rule of thumb: 1 min per mm of minimum section thickness. Insufficient soak → cold core → internal cracking.',
-        'Hold at T_target for t_soak',
-        'Hold at ' + dTemp(p.targetTemp||0) + ' for ' + (p.soakMin||0) + ' min',
-        (p.soakMin||0) + ' min');
-      break;
-    }
-
-    case 'forge': {
-      var h0_  = step.dimsIn.length || step.dimsIn.height || 0;
-      var h1_  = p.outHeight || 0;
-      var fPct = p.flashPct  || 0;
-      var fLoss= round3(step.massIn * fPct / 100);
-      var mOut3= round3(step.massIn - fLoss);
-      var eps  = (h0_ > 0 && h1_ > 0) ? round3(Math.log(h0_ / h1_)) : null;
-      var pctR = (h0_ > 0 && h1_ > 0) ? round3((h0_ - h1_) / h0_ * 100) : null;
-      var R    = p.forgeRatio || 0;
-
-      w('Equipment & Process',
-        'Press: slow, high tonnage, controlled stroke — ideal for large open-die work and complex sections. Hammer: rapid blows, high strain rate, excellent grain refinement — faster cycling for smaller work.',
-        '—',
-        (p.equipment||'press') + '  ·  ' + (p.process||'open_die').replace(/_/g,' ') + '  ·  ' + (p.pressTonnage||'—') + ' ton  ·  ' + (p.numHits||1) + ' hit' + ((p.numHits||1)>1?'s':''),
-        p.dieNumber ? 'Die: ' + p.dieNumber : (p.process||'open_die').replace(/_/g,' '));
-
-      w('Die Setup',
-        'Die preheat (typically 150–300 °C) prevents thermal shock cracking and slows surface chilling of the workpiece, improving metal flow and reducing required tonnage. Graphite lubricant reduces friction and eases part ejection.',
-        '—',
-        'Die preheat: ' + dTemp(p.dieTemp||200) + '  ·  Lubricant: ' + (p.lubricant||'graphite').replace(/_/g,' '),
-        dTemp(p.dieTemp||200));
-
-      w('Flash Loss',
-        'Flash is intentional excess metal pushed out at the die parting line to ensure complete cavity fill. Flash % is of billet mass entering the die. Open-die work typically has 0% intentional flash; closed-die 10–20%.',
-        'M_flash = M_in × (flash% ÷ 100)',
-        'M_flash = ' + dMass(step.massIn) + ' × (' + fPct + ' ÷ 100)',
-        dMass(fLoss));
-
-      w('Mass Out of Forge',
-        'Forged part mass (including any flash still attached). Flash is removed at the Trim Flash step.',
-        'M_out = M_in − M_flash',
-        'M_out = ' + dMass(step.massIn) + ' − ' + dMass(fLoss),
-        dMass(mOut3));
-
-      w('Forge Ratio',
-        'Cross-sectional area reduction from billet to forged shape. R ≥ 3:1 breaks up cast structure and closes ingot porosity. R ≥ 5:1 achieves full grain refinement in most alloy steels. Critical applications often require R ≥ 4:1 minimum.',
-        'R = A_in ÷ A_out',
-        'R (target) = ' + R,
-        R + ' : 1' + (R >= 5 ? '  ✓ excellent' : R >= 3 ? '  ✓ acceptable' : '  ⚠ below 3:1 minimum'));
-
-      w('True (Logarithmic) Strain',
-        'True strain ε = ln(h₀/h₁) — additive across passes, accurately representing large plastic deformations. Engineering strain underestimates at high reductions. Cumulative true strain tracks total plastic work.',
-        'ε = ln( h₀ ÷ h₁ )',
-        eps !== null
-          ? 'ε = ln( ' + dLen(h0_) + ' ÷ ' + dLen(h1_) + ' )  =  ln( ' + round3(h0_/h1_) + ' )'
-          : 'ε = ln( h₀ ÷ h₁ )  — set input / output heights',
-        eps !== null ? 'ε = ' + eps : '—');
-
-      w('% Height Reduction',
-        'Engineering height reduction — quick reference for press tonnage estimation and operator targets. Not additive across passes; use true strain for cumulative tracking.',
-        '%R = (h₀ − h₁) ÷ h₀ × 100',
-        pctR !== null
-          ? '%R = (' + dLen(h0_) + ' − ' + dLen(h1_) + ') ÷ ' + dLen(h0_) + ' × 100'
-          : '%R — set input / output heights',
-        pctR !== null ? pctR + '%' : '—');
-      break;
-    }
-
-    case 'ring_mill': {
-      var odRM = p.outOD || 0; var idRM = p.outID || 0; var htRM = p.outHeight || 0;
-      var wallRM = round3((odRM - idRM) / 2);
-      var volRM  = round3(Math.max(0, Math.PI / 4 * (odRM * odRM - idRM * idRM) * htRM));
-      var mRM    = round3(volRM / 1e6 * general.density);
-      var mLossRM= round3(Math.max(0, step.massIn - mRM));
-
-      w('Ring Mill Process',
-        'The ring mill drives a mandrel through the preform bore while a drive roll compresses the OD, reducing wall thickness and increasing diameter. The axial rolls control ring height simultaneously.',
-        '—',
-        'Preform: ' + (p.preformType||'pierced_disc').replace(/_/g,' ') + '  ·  mandrel Ø ' + dLen(p.mandrelDiam||0) + '  ·  ' + (p.rollPasses||1) + ' passes',
-        (p.preformType||'pierced_disc').replace(/_/g,' '));
-
-      w('Ring Dimensions',
-        'Final rolled ring geometry. Wall thickness = (OD − ID) ÷ 2. Tighter wall-to-height ratios require more passes and careful temperature control.',
-        'Wall = (OD − ID) ÷ 2',
-        'Wall = (' + dLen(odRM) + ' − ' + dLen(idRM) + ') ÷ 2',
-        'Wall = ' + dLen(wallRM) + '  ·  OD ' + dLen(odRM) + '  ·  ID ' + dLen(idRM) + '  ·  H ' + dLen(htRM));
-
-      w('Contour',
-        'OD and ID contours can be forged-in by profiled rolls (net-shape forging) or machined afterward. Forged contours save machining stock but require purpose-built tooling. Example: bearing races use profiled OD/ID contours.',
-        '—',
-        'OD contour: ' + (p.odContour||'none') + '  ·  ID contour: ' + (p.idContour||'none'),
-        (p.odContour||'none') !== 'none' || (p.idContour||'none') !== 'none' ? 'contoured ring' : 'plain ring');
-
-      w('Ring Volume',
-        'Volume of a hollow cylinder = (π ÷ 4) × (OD² − ID²) × H.',
-        'V = π ÷ 4 × (OD² − ID²) × H',
-        'V = π ÷ 4 × (' + dLen(odRM) + '² − ' + dLen(idRM) + '²) × ' + dLen(htRM),
-        dVol(volRM));
-
-      w('Mass Out',
-        'Ring mass. Loss reflects material that was in the preform but not captured in the final ring — flash, scale, or piercing slugs already removed upstream.',
-        'M_out = V ÷ 1 000 000 × ρ',
-        'M_out = ' + fmtVol(volRM) + ' ÷ 1 000 000 × ' + general.density,
-        dMass(mRM));
-      break;
-    }
-
-    case 'trim': {
-      var tFPct = p.flashPct || 0;
-      var tLoss = round3(step.massIn * tFPct / 100);
-      var tOut  = round3(step.massIn - tLoss);
-
-      w('Trim Condition',
-        'Hot trimming (immediately post-forge, above ~650 °C) requires less force and preserves trim die life. Cold trimming gives a cleaner cut and better dimensional control but demands higher forces and can introduce residual stress.',
-        '—',
-        (p.trimCondition||'hot') + ' trim  ·  ' + (p.dieType||'conventional').replace(/_/g,' ') + ' die' + (p.dieNumber ? '  ·  Die #' + p.dieNumber : ''),
-        (p.trimCondition||'hot') + ' trim');
-
-      w('Flash Removed',
-        'Flash mass removed at this step — the intentional overflow from the forge die parting line.',
-        'M_trim = M_in × (flash% ÷ 100)',
-        'M_trim = ' + dMass(step.massIn) + ' × (' + tFPct + ' ÷ 100)',
-        dMass(tLoss));
-
-      w('Flash Disposition',
-        'Reforging retains the most value (alloy + thermal energy partly recovered). Remelt recovers alloy value. Scrap recycling is lowest value but simplest.',
-        '—',
-        (p.flashDisposition||'scrap_recycle').replace(/_/g,' '),
-        (p.flashDisposition||'scrap_recycle').replace(/_/g,' '));
-
-      w('Mass After Trimming',
-        'Net forging mass proceeding to heat treatment or machining.',
-        'M_out = M_in − M_trim',
-        'M_out = ' + dMass(step.massIn) + ' − ' + dMass(tLoss),
-        dMass(tOut));
-      break;
-    }
-
-    case 'heat_treat': {
-      var htHardStr = (p.targetHardnessMin > 0 || p.targetHardnessMax > 0)
-        ? p.targetHardnessMin + '–' + p.targetHardnessMax + ' ' + (p.hardnessScale||'HB')
-        : 'not specified';
-
-      w('Process & Specification',
-        'Normalize: air-cool from austenitize — refines grain, relieves stress. Anneal: slow furnace cool — maximum softness. Quench & Temper: water quench then temper — maximises strength and toughness. Stress Relief: below Ac1 — removes residual stress without phase change.',
-        '—',
-        (p.process||'normalize').replace(/_/g,' ') + (p.specNumber ? '  ·  ' + p.specNumber : ''),
-        (p.process||'normalize').replace(/_/g,' '));
-
-      w('Furnace',
-        'Gas furnace is primary. Electric is used for small or precision jobs where tighter temperature uniformity is needed.',
-        '—',
-        (p.furnaceType||'gas') + ' furnace  ·  heat to ' + dTemp(p.targetTemp||0) + '  ·  soak ' + (p.soakMin||60) + ' min',
-        (p.furnaceType||'gas') + ' furnace');
-
-      w('Quench',
-        'This forge currently uses water quench tanks. Water is the fastest quench medium — highest hardness potential but highest risk of quench cracking, particularly in large sections or complex shapes.',
-        '—',
-        (p.quenchant||'water') + '  ·  agitation: ' + (p.quenchAgitation||'still'),
-        (p.quenchant||'water'));
-
-      if ((p.temperTemp||0) > 0) {
-        w('Temper',
-          'As-quenched martensite is hard but brittle. Tempering recovers toughness by allowing carbon redistribution in the martensitic matrix. Higher temper temperature = lower hardness, higher toughness and ductility.',
-          'T_temper  <  Ac1',
-          'T_temper = ' + dTemp(p.temperTemp) + '  ·  soak = ' + (p.temperSoakMin||0) + ' min',
-          dTemp(p.temperTemp));
-      }
-
-      w('Target Hardness',
-        'Measured using Brinell hardness tester. Brinell (HB) is appropriate for forgings — the large ball indenter averages over a larger area and is not sensitive to surface scale or decarb layers.',
-        '—',
-        'Target: ' + htHardStr,
-        htHardStr);
-
-      w('Mass Balance',
-        'Heat treatment has negligible mass loss when conducted in a furnace with controlled atmosphere. No material is removed in this step.',
-        'M_out = M_in',
-        'M_out = ' + dMass(step.massIn),
-        dMass(step.massOut));
-      break;
-    }
-
-    case 'machine': {
-      var dI  = step.dimsIn.diameter || step.dimsIn.od || 100;
-      var hI  = step.dimsIn.height   || 150;
-      var dO  = p.outDiameter || dI;
-      var hO  = p.outHeight   || hI;
-      var vI  = round3(Math.PI * Math.pow(dI/2, 2) * hI);
-      var vO  = round3(Math.PI * Math.pow(dO/2, 2) * hO);
-      var dV  = round3(Math.max(0, vI - vO));
-      var cM  = round3(dV / 1e6 * general.density);
-      var mO  = round3(Math.max(0, step.massIn - cM));
-
-      w('Equipment & Operation',
-        'Lathe: turning, facing, boring, threading on round parts. Vertical Mill: face milling, contouring on flat or prismatic features. Boullard (vertical boring mill): large diameter boring, facing, turning — suited to large forgings too heavy for a conventional lathe. Drill Press: hole drilling. Saw: cutoff. Sander/Grinder: surface dressing.',
-        '—',
-        (p.equipment||'lathe').replace(/_/g,' ') + '  ·  ' + (p.operation||'turn') + '  ·  ' + (p.numSetups||1) + ' setup' + ((p.numSetups||1)>1?'s':''),
-        p.programNumber ? 'Ref: ' + p.programNumber : (p.operation||'turn'));
-
-      w('Input Volume',
-        'Volume of the forging as received at machining — deliberately oversized by the machining stock allowance to guarantee finish dimensions can be hit.',
-        'V_in = π × (D_in ÷ 2)² × H_in',
-        'V_in = π × (' + dLen(dI) + ' ÷ 2)² × ' + dLen(hI),
-        dVol(vI));
-
-      w('Final Machined Volume',
-        'Target finished volume after all operations.',
-        'V_out = π × (D_out ÷ 2)² × H_out',
-        'V_out = π × (' + dLen(dO) + ' ÷ 2)² × ' + dLen(hO),
-        dVol(vO));
-
-      w('Volume Removed (Chips)',
-        'The planned material removal. This is why forgings are intentionally oversized — the stock allowance ensures metal exists to achieve final dimensions.',
-        'ΔV = V_in − V_out',
-        'ΔV = ' + dVol(vI) + ' − ' + dVol(vO),
-        dVol(dV));
-
-      w('Chip Mass',
-        'Mass of removed chips and swarf. Chips are recycled as scrap but represent alloy value, heating energy, and forging energy already invested.',
-        'M_chips = ΔV ÷ 1 000 000 × ρ',
-        'M_chips = ' + fmtVol(dV) + ' ÷ 1 000 000 × ' + general.density,
-        dMass(cM));
-
-      w('Quality Requirements',
-        'Surface finish Ra (roughness average) and IT tolerance class define the precision required. Ra 125 μin = standard turned. Ra 63 μin = fine turned. Ra 32 μin = ground. IT7 = standard machined, IT6 = precision.',
-        '—',
-        'Surface: Ra ' + (p.surfaceFinish||'125') + ' μin  ·  Tolerance: ' + (p.toleranceClass||'IT7'),
-        'Ra ' + (p.surfaceFinish||'125') + '  ' + (p.toleranceClass||'IT7'));
-
-      w('Final Part Mass',
-        'Mass of the finished machined part.',
-        'M_out = M_in − M_chips',
-        'M_out = ' + dMass(step.massIn) + ' − ' + dMass(cM),
-        dMass(mO));
-      break;
-    }
-
-    case 'weld': {
-      w('Weld Process',
-        'Arc welding and MIG (GMAW) with argon or 730 shielding gas. Used for repair, build-up, or joining operations. 730 is a mixed argon/CO₂ blend suited to structural carbon and alloy steels.',
-        '—',
-        (p.process||'arc') + ' weld  ·  gas: ' + (p.shieldingGas||'argon') + (p.filler ? '  ·  filler: ' + p.filler : ''),
-        (p.process||'arc') + ' weld');
-
-      w('Passes',
-        'Multi-pass welds build up material in layers. Each pass must be cleaned of slag before the next. More passes = more heat input = larger heat-affected zone.',
-        '—',
-        (p.passes||1) + ' pass' + ((p.passes||1) > 1 ? 'es' : ''),
-        (p.passes||1) + ' pass' + ((p.passes||1) > 1 ? 'es' : ''));
-
-      w('Post-Weld Treatment',
-        'Stress relief (typically 550–650 °C for carbon/alloy steels) reduces residual weld stresses, lowers risk of delayed cracking, and improves dimensional stability in service.',
-        '—',
-        (p.pwht||'none').replace(/_/g,' '),
-        (p.pwht||'none').replace(/_/g,' '));
-
-      w('Mass Balance',
-        'Weld filler adds a small amount of mass but is not tracked here — mass is treated as a pass-through for process flow purposes.',
-        'M_out ≈ M_in',
-        'M_out = ' + dMass(step.massIn),
-        dMass(step.massOut));
-      break;
-    }
-
-    case 'inspect': {
-      var checks2 = [];
-      if (p.checkDimensional === 'yes') checks2.push('dimensional');
-      if (p.checkHardness    === 'yes') checks2.push('Brinell hardness');
-      if (p.checkTemp        === 'yes') checks2.push('temperature record');
-
-      w('Inspection Method',
-        'Dimensional: tape, calipers, gauges. Brinell Hardness: Brinell tester — large ball suited to coarse-grained forgings. Temperature: multiped recorder verifies furnace cycle was achieved and documents the thermal history.',
-        '—',
-        (p.method||'dimensional').replace(/_/g,' ') + (p.specNumber ? '  ·  ' + p.specNumber : ''),
-        (p.method||'dimensional').replace(/_/g,' '));
-
-      w('Required Checks',
-        'All listed checks must pass before the part proceeds to the next step.',
-        '—',
-        checks2.length > 0 ? checks2.join('  ·  ') : 'per method above',
-        checks2.length > 0 ? checks2.join(', ') : 'per method');
-
-      w('Sampling Plan',
-        '100% inspection is standard for forgings on first runs or critical applications. First article inspection qualifies the process before full production.',
-        '—',
-        (p.samplingPlan||'100_percent').replace(/_/g,' '),
-        (p.samplingPlan||'100_percent').replace(/_/g,' '));
-
-      w('Disposition',
-        'Pass → proceeds. Hold → awaits engineering review. Conditional pass → accepted with documented deviation. Scrap → removed from flow.',
-        '—',
-        (p.result||'pending').replace(/_/g,' '),
-        (p.result||'pending').replace(/_/g,' '));
-
-      w('Mass Balance',
-        'Inspection is non-destructive — mass passes through unchanged for conforming parts.',
-        'M_out = M_in  (pass)',
-        'M_out = ' + dMass(step.massIn),
-        dMass(step.massOut));
-      break;
-    }
-
-    case 'stock_out': {
-      var ptSO = p.productType || 'bar';
-      var pdSO = '';
-      if (ptSO === 'bar') {
-        pdSO = (p.barShape||'round') + ' bar';
-        if (p.isStepped === 'yes') pdSO += '  ·  ' + (p.numSteps||1) + '-step';
-        pdSO += '  ·  L: ' + dLen(p.barLength||0);
-      } else if (ptSO === 'disc') {
-        pdSO = 'disc  Ø ' + dLen(p.discOD||0) + '  ×  ' + dLen(p.discThickness||0) + ' thick';
-      } else if (ptSO === 'ring') {
-        pdSO = 'ring  OD ' + dLen(p.ringOD||0) + '  ID ' + dLen(p.ringID||0) + '  H ' + dLen(p.ringHeight||0);
-        if ((p.odContour||'none') !== 'none') pdSO += '  ·  OD: ' + p.odContour;
-        if ((p.idContour||'none') !== 'none') pdSO += '  ·  ID: ' + p.idContour;
-      } else if (ptSO === 'mushroom') {
-        pdSO = 'mushroom  flange Ø ' + dLen(p.flangeDiam||0) + '  stem Ø ' + dLen(p.stemDiam||0) + '  H ' + dLen(p.totalHeight||0);
-      }
-
-      w('Product Description',
-        'The finished forged product. Bars can be round, rectangular, hexagonal, or stepped (multiple sections of varying shape/size). Discs are pancake-form forgings. Rings are pierced discs — rolled on the ring mill. Mushrooms are flange-and-stem shapes for aerospace/turbine applications.',
-        '—',
-        pdSO,
-        ptSO);
-
-      w('Part Identification',
-        'Part number, revision, and work order provide full traceability from customer drawing to shipped product.',
-        '—',
-        (p.partNumber||'—') + (p.partRevision ? '  Rev ' + p.partRevision : '') + (p.workOrderNumber ? '  ·  WO: ' + p.workOrderNumber : ''),
-        p.partNumber||'—');
-
-      w('Customer & Shipping',
-        'Final delivery destination and method.',
-        '—',
-        (p.customerName||'—') + '  ·  ' + (p.shippingMethod||'ground').replace(/_/g,' '),
-        p.customerName||'—');
-
-      w('Certification',
-        'C of C (Certificate of Conformance) and Material Test Reports are standard for industrial forgings. First Article and FAIR are required for aerospace customers.',
-        '—',
-        p.certRequired === 'yes' ? (p.certType||'C_of_C').replace(/_/g,' ') + ' required' : 'no certification required',
-        p.certRequired === 'yes' ? (p.certType||'C_of_C').replace(/_/g,' ') : 'none');
-
-      w('Final Mass Out',
-        'Total mass shipped — the recoverable output of the entire process chain.',
-        'M_shipped = M_in  (pass-through)',
-        'M_shipped = ' + dMass(step.massIn),
-        dMass(step.massOut));
-      break;
-    }
-
-    default: {
-      w('Mass Flow',
-        'Pass-through step — mass is unchanged.',
-        'M_out = M_in',
-        'M_out = ' + dMass(step.massIn),
-        dMass(step.massOut));
-      break;
-    }
-  }
-
-  return out;
-}
-
-function refreshRightPanel() {
-  var content = document.getElementById('mr-right-content');
-  if (!content) return;
-  content.innerHTML = '';
-
-  var chain = computeChain();
-  if (chain.length === 0) { showRightPlaceholder(); return; }
-
-  var first    = chain[0];
-  var last     = chain[chain.length - 1];
-  var massIn   = first.massOut;
-  var massOut  = last.massOut;
-  var yieldPct = massIn > 0 ? round3(massOut / massIn * 100) : 0;
-  var totalLoss= round3(massIn - massOut);
-
-  // Summary cards
-  var grid = document.createElement('div');
-  Object.assign(grid.style, { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px', marginBottom: '16px' });
-  [
-    { label: 'Mass In',    value: dMass(massIn),    hi: false },
-    { label: 'Mass Out',   value: dMass(massOut),   hi: true  },
-    { label: 'Yield',      value: yieldPct + '%',   hi: yieldPct >= 75 },
-    { label: 'Total Loss', value: dMass(totalLoss), hi: false },
-  ].forEach(function(c) {
-    var card = document.createElement('div');
-    Object.assign(card.style, {
-      padding: '10px 12px', borderRadius: '3px',
-      background: c.hi ? ACCENT_DIM + '0.08)' : 'rgba(255,255,255,0.04)',
-      border: '2px solid ' + (c.hi ? ACCENT_DIM + '0.35)' : 'rgba(255,255,255,0.22)'),
-    });
-    var l = document.createElement('div');
-    Object.assign(l.style, { fontSize: '8px', letterSpacing: '1.5px', textTransform: 'uppercase', color: '#99b0c0', marginBottom: '5px' });
-    l.textContent = c.label;
-    var v = document.createElement('div');
-    Object.assign(v.style, { fontSize: '15px', fontWeight: '300', color: c.hi ? ACCENT : '#c0ccd8' });
-    v.textContent = c.value;
-    card.appendChild(l); card.appendChild(v);
-    grid.appendChild(card);
-  });
-  content.appendChild(grid);
-
-  // Section label
-  var sl = document.createElement('div');
-  Object.assign(sl.style, {
-    fontSize: '8px', letterSpacing: '2.5px', textTransform: 'uppercase', color: ACCENT,
-    marginBottom: '8px', paddingBottom: '6px', borderBottom: '1px solid ' + ACCENT_DIM + '0.25)',
-  });
-  sl.textContent = 'Step Detail';
-  content.appendChild(sl);
-
-  chain.forEach(function(step) {
-    var isSelected = step.nodeId === selectedId;
-    var def = NODE_DEFS[step.nodeType] || {};
-
-    var card = document.createElement('div');
-    Object.assign(card.style, {
-      marginBottom: '8px', padding: '10px 12px', borderRadius: '3px',
-      background: isSelected ? 'rgba(255,255,255,0.04)' : 'rgba(255,255,255,0.03)',
-      border: '2px solid ' + (isSelected ? (def.borderColor || '#445566') : 'rgba(255,255,255,0.20)'),
-      cursor: 'pointer', transition: 'border-color 0.2s ease',
-    });
-
-    var sHdr = document.createElement('div');
-    Object.assign(sHdr.style, { display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '6px' });
-    var dot = document.createElement('div');
-    Object.assign(dot.style, { width: '8px', height: '8px', borderRadius: '50%', flexShrink: '0', background: def.borderColor || '#556677' });
-    var slbl = document.createElement('div');
-    Object.assign(slbl.style, { fontSize: '9px', fontWeight: '700', letterSpacing: '1.5px', textTransform: 'uppercase', color: '#aabbcc', flex: '1' });
-    slbl.textContent = step.label;
-    var mtag = document.createElement('div');
-    Object.assign(mtag.style, { fontSize: '10px', color: '#99b0c0' });
-    mtag.textContent = dMass(step.massOut);
-    sHdr.appendChild(dot); sHdr.appendChild(slbl); sHdr.appendChild(mtag);
-    card.appendChild(sHdr);
-
-    // Loss bar
-    if (step.massLoss > 0) {
-      var lossRow = document.createElement('div');
-      Object.assign(lossRow.style, { display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '6px' });
-      var barEl = document.createElement('div');
-      Object.assign(barEl.style, { flex: '1', height: '3px', background: 'rgba(255,255,255,0.16)', borderRadius: '2px', overflow: 'hidden' });
-      var fill = document.createElement('div');
-      Object.assign(fill.style, { width: Math.min(step.lossPct, 100) + '%', height: '100%', background: step.lossPct > 10 ? '#ef4444' : '#e9c46a', borderRadius: '2px' });
-      barEl.appendChild(fill);
-      var lossLbl = document.createElement('div');
-      Object.assign(lossLbl.style, { fontSize: '9px', color: '#99b0c0', whiteSpace: 'nowrap' });
-      lossLbl.textContent = '−' + step.massLoss + ' kg (' + step.lossPct + '%)';
-      lossRow.appendChild(barEl); lossRow.appendChild(lossLbl);
-      card.appendChild(lossRow);
-    }
-
-    step.calcs.forEach(function(calc) {
-      var row = document.createElement('div');
-      Object.assign(row.style, { display: 'flex', justifyContent: 'space-between', fontSize: '9px', marginBottom: '2px', gap: '8px' });
-      var k = document.createElement('span'); Object.assign(k.style, { color: '#8899aa', flexShrink: '0' }); k.textContent = calc.label;
-      var v = document.createElement('span'); Object.assign(v.style, { color: '#99aabb', textAlign: 'right' }); v.textContent = calc.result;
-      row.appendChild(k); row.appendChild(v);
-      card.appendChild(row);
-    });
-
-    card.addEventListener('click', function() { selectNode(step.nodeId); });
-    content.appendChild(card);
-  });
 }
 
 // ---------------------------------------------------------------------------
@@ -2650,7 +1189,7 @@ function buildActionBar() {
     Object.assign(wrap.style, {
       display: 'flex', alignItems: 'center', gap: '5px',
       cursor: 'pointer', fontSize: '9px', letterSpacing: '1.5px',
-      textTransform: 'uppercase', color: unitSystem === value ? ACCENT : '#7a9aaa',
+      textTransform: 'uppercase', color: S.getUnitSystem() === value ? ACCENT : '#7a9aaa',
       transition: 'color 0.15s ease', userSelect: 'none',
     });
     wrap.id = 'mr-unit-label-' + value;
@@ -2659,16 +1198,16 @@ function buildActionBar() {
     cb.type = 'radio';
     cb.name = 'mr-unit-system';
     cb.value = value;
-    cb.checked = unitSystem === value;
+    cb.checked = S.getUnitSystem() === value;
     Object.assign(cb.style, {
       accentColor: ACCENT, cursor: 'pointer', width: '11px', height: '11px',
     });
     cb.addEventListener('change', function() {
       if (cb.checked) {
-        unitSystem = value;
+        S.setUnitSystem(value);
         ['si', 'imperial'].forEach(function(v) {
           var lbl = document.getElementById('mr-unit-label-' + v);
-          if (lbl) lbl.style.color = unitSystem === v ? ACCENT : '#7a9aaa';
+          if (lbl) lbl.style.color = S.getUnitSystem() === v ? ACCENT : '#7a9aaa';
         });
         setUnitSystem(value);
       }
@@ -2785,727 +1324,11 @@ function styleBarBtn(btn) {
 }
 
 
-// ===========================================================================
-// NODE RENDERING
-// ===========================================================================
-
-function createNode(type, x, y) {
-  var def = NODE_DEFS[type];
-  if (!def) return null;
-  var node = { id: 'n' + (_nid++), type: type, label: def.label, x: x, y: y, params: Object.assign({}, def.defaultParams) };
-  nodes.push(node);
-  renderNodeEl(node);
-  refreshRightPanel(); refreshCalcPanel();
-  return node;
-}
-
-function renderNodeEl(node) {
-  var def = NODE_DEFS[node.type];
-
-  var el = document.createElement('div');
-  el.id = 'node-' + node.id;
-  el.className = 'mr-node';
-  Object.assign(el.style, {
-    position: 'absolute', left: node.x + 'px', top: node.y + 'px',
-    width: NODE_W + 'px', background: def.color,
-    border: '2px solid ' + def.borderColor, borderRadius: '4px',
-    userSelect: 'none', transition: 'box-shadow 0.2s ease', cursor: 'grab',
-  });
-
-  // Header
-  var hdr = document.createElement('div');
-  Object.assign(hdr.style, {
-    padding: '7px 10px', borderBottom: '1px solid rgba(0,0,0,0.3)',
-    display: 'flex', alignItems: 'center', gap: '6px',
-  });
-  var hdot = document.createElement('div');
-  Object.assign(hdot.style, { width: '6px', height: '6px', borderRadius: '50%', background: def.textColor, opacity: '0.7', flexShrink: '0' });
-  var hlbl = document.createElement('div');
-  hlbl.id = 'node-lbl-' + node.id;
-  Object.assign(hlbl.style, {
-    fontSize: '9px', fontWeight: '700', letterSpacing: '1.5px', textTransform: 'uppercase',
-    color: def.textColor, flex: '1', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-  });
-  hlbl.textContent = node.label || def.label;
-  hdr.appendChild(hdot); hdr.appendChild(hlbl);
-  el.appendChild(hdr);
-
-  // Body — first 2 non-section params as preview
-  var body = document.createElement('div');
-  Object.assign(body.style, { padding: '5px 10px' });
-  // Smart preview key selection per node type
-  var allReal = def.paramDefs.filter(function(pd) { return pd.section === undefined; });
-  var previewKeys = null;
-  if (node.type === 'stock_in')   previewKeys = ['grade', 'geometry'];
-  if (node.type === 'cut')        previewKeys = ['purpose', 'targetLength'];
-  if (node.type === 'heat')       previewKeys = ['targetTemp', 'furnaceType'];
-  if (node.type === 'forge')      previewKeys = ['equipment', 'process'];
-  if (node.type === 'ring_mill')  previewKeys = ['outOD', 'outID'];
-  if (node.type === 'trim')       previewKeys = ['trimCondition', 'flashPct'];
-  if (node.type === 'heat_treat') previewKeys = ['process', 'targetTemp'];
-  if (node.type === 'machine')    previewKeys = ['equipment', 'operation'];
-  if (node.type === 'weld')       previewKeys = ['process', 'shieldingGas'];
-  if (node.type === 'inspect')    previewKeys = ['method', 'result'];
-  if (node.type === 'stock_out')  previewKeys = ['productType', 'partNumber'];
-
-
-
-
-
-
-
-
-
-  var previews = previewKeys
-    ? previewKeys.map(function(k) { return allReal.find(function(pd) { return pd.key === k; }); }).filter(Boolean)
-    : allReal.slice(0, 2);
-  if (previews.length === 0) {
-    var emp = document.createElement('div');
-    Object.assign(emp.style, { fontSize: '9px', color: 'rgba(255,255,255,0.15)', textAlign: 'center', padding: '5px 0' });
-    emp.textContent = '—';
-    body.appendChild(emp);
-  } else {
-    previews.forEach(function(pd) {
-      var row = document.createElement('div');
-      Object.assign(row.style, { display: 'flex', justifyContent: 'space-between', fontSize: '9px', marginBottom: '2px' });
-      var k = document.createElement('span');
-      Object.assign(k.style, { color: 'rgba(255,255,255,0.28)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: '90px' });
-      k.textContent = pd.label.split('(')[0].trim();
-      var v = document.createElement('span');
-      v.id = 'node-p-' + node.id + '-' + pd.key;
-      Object.assign(v.style, { color: def.textColor, opacity: '0.85' });
-      v.textContent = node.params[pd.key] !== undefined
-        ? (function() {
-            var raw = node.params[pd.key];
-            if (!pd.unitType) return raw;
-            var disp = toDisplay(raw, pd.unitType);
-            if (pd.unitType === 'length')  return disp + (unitSystem === 'imperial' ? '"' : '');
-            if (pd.unitType === 'temp')    return disp + (unitSystem === 'imperial' ? '°F' : '°C');
-            if (pd.unitType === 'density') return disp + (unitSystem === 'imperial' ? ' lb/in³' : ' g/cm³');
-            return disp;
-          }())
-        : '—';
-      row.appendChild(k); row.appendChild(v);
-      body.appendChild(row);
-    });
-  }
-  el.appendChild(body);
-
-  // Ports
-  if (def.hasInput) {
-    var inp = makePortEl('input', node.id);
-    Object.assign(inp.style, { position: 'absolute', left: (-PORT_R) + 'px', top: (NODE_H / 2 - PORT_R) + 'px' });
-    el.appendChild(inp);
-  }
-  if (def.hasOutput) {
-    var outp = makePortEl('output', node.id);
-    Object.assign(outp.style, { position: 'absolute', right: (-PORT_R) + 'px', top: (NODE_H / 2 - PORT_R) + 'px' });
-    el.appendChild(outp);
-  }
-
-  el.addEventListener('mousedown', function(e) { onNodeMouseDown(e, node.id); });
-  el.addEventListener('contextmenu', function(e) { onNodeContextMenu(e, node.id); });
-  el.addEventListener('click', function(e) { if (!e.target.classList.contains('mr-port')) selectNode(node.id); });
-
-  nodesLayer.appendChild(el);
-}
-
-function makePortEl(portType, nodeId) {
-  var el = document.createElement('div');
-  el.className = 'mr-port mr-port-' + portType;
-  el.dataset.portType = portType;
-  el.dataset.nodeId   = nodeId;
-  Object.assign(el.style, {
-    width: (PORT_R * 2) + 'px', height: (PORT_R * 2) + 'px', borderRadius: '50%',
-    background: portType === 'output' ? ACCENT : '#2a3a55',
-    border: '2px solid rgba(255,255,255,0.35)',
-    cursor: 'crosshair', zIndex: '10',
-    transition: 'transform 0.15s ease, background 0.15s ease',
-  });
-  el.addEventListener('mouseenter', function() { el.style.transform = 'scale(1.5)'; el.style.background = portType === 'output' ? '#ff8060' : '#4466aa'; });
-  el.addEventListener('mouseleave', function() { el.style.transform = 'scale(1)';   el.style.background = portType === 'output' ? ACCENT : '#2a3a55'; });
-  el.addEventListener('mousedown', function(e) {
-    e.stopPropagation();
-    if (portType === 'output') {
-      var pos = getCanvasPos(e);
-      dragState = { type: 'connect', fromId: nodeId, mouseX: pos.x, mouseY: pos.y };
-    }
-  });
-  return el;
-}
-
-function refreshNodeEl(nodeId) {
-  var node = nodes.find(function(n) { return n.id === nodeId; });
-  if (!node) return;
-  var def = NODE_DEFS[node.type];
-  var lbl = document.getElementById('node-lbl-' + nodeId);
-  if (lbl) lbl.textContent = node.label || def.label;
-  var allReal = def.paramDefs.filter(function(pd) { return pd.section === undefined; });
-  var previewKeys = null;
-  if (node.type === 'stock_in')   previewKeys = ['grade', 'geometry'];
-  if (node.type === 'cut')        previewKeys = ['purpose', 'targetLength'];
-  if (node.type === 'heat')       previewKeys = ['targetTemp', 'furnaceType'];
-  if (node.type === 'forge')      previewKeys = ['equipment', 'process'];
-  if (node.type === 'ring_mill')  previewKeys = ['outOD', 'outID'];
-  if (node.type === 'trim')       previewKeys = ['trimCondition', 'flashPct'];
-  if (node.type === 'heat_treat') previewKeys = ['process', 'targetTemp'];
-  if (node.type === 'machine')    previewKeys = ['equipment', 'operation'];
-  if (node.type === 'weld')       previewKeys = ['process', 'shieldingGas'];
-  if (node.type === 'inspect')    previewKeys = ['method', 'result'];
-  if (node.type === 'stock_out')  previewKeys = ['productType', 'partNumber'];
-  var previews = previewKeys
-    ? previewKeys.map(function(k) { return allReal.find(function(pd) { return pd.key === k; }); }).filter(Boolean)
-    : allReal.slice(0, 2);
-  previews.forEach(function(pd) {
-    var el = document.getElementById('node-p-' + nodeId + '-' + pd.key);
-    if (!el) return;
-    var raw = node.params[pd.key];
-    if (raw === undefined) { el.textContent = '—'; return; }
-    if (!pd.unitType) { el.textContent = String(raw).replace(/_/g, ' '); return; }
-    var disp = toDisplay(raw, pd.unitType);
-    if (pd.unitType === 'length')  el.textContent = disp + (unitSystem === 'imperial' ? '"' : '');
-    else if (pd.unitType === 'temp') el.textContent = disp + (unitSystem === 'imperial' ? '°F' : '°C');
-    else if (pd.unitType === 'density') el.textContent = disp + (unitSystem === 'imperial' ? ' lb/in³' : ' g/cm³');
-    else el.textContent = disp;
-  });
-}
-
-function removeNodeEl(nodeId) {
-  var el = document.getElementById('node-' + nodeId);
-  if (el && el.parentNode) el.parentNode.removeChild(el);
-}
-
-function setNodeSelected(nodeId, selected) {
-  var el = document.getElementById('node-' + nodeId);
-  if (!el) return;
-  var node = nodes.find(function(n) { return n.id === nodeId; });
-  var def  = node ? (NODE_DEFS[node.type] || {}) : {};
-  el.style.boxShadow = selected ? '0 0 0 2px ' + (def.borderColor || ACCENT) + ', 0 4px 24px rgba(0,0,0,0.7)' : 'none';
-}
-
-function selectNode(nodeId) {
-  if (selectedId) setNodeSelected(selectedId, false);
-  selectedId = nodeId;
-  if (nodeId) {
-    setNodeSelected(nodeId, true);
-    leftMode = 'node_detail';
-    // Clear connection selection
-    if (selectedConnId) { selectedConnId = null; refreshConnections(); }
-  }
-  refreshLeftPanel();
-  refreshRightPanel(); refreshCalcPanel();
-}
-
-function deleteNode(nodeId) {
-  connections = connections.filter(function(c) { return c.fromId !== nodeId && c.toId !== nodeId; });
-  nodes = nodes.filter(function(n) { return n.id !== nodeId; });
-  removeNodeEl(nodeId);
-  if (selectedId === nodeId) selectNode(null);
-  refreshConnections();
-  refreshRightPanel(); refreshCalcPanel();
-}
-
-
-// ===========================================================================
-// SVG CONNECTIONS
-// ===========================================================================
-
-function getPortPos(node, portType) {
-  if (portType === 'output') return { x: node.x + NODE_W + PORT_R, y: node.y + NODE_H / 2 };
-  return { x: node.x - PORT_R, y: node.y + NODE_H / 2 };
-}
-
-// ---------------------------------------------------------------------------
-// Orthogonal router — produces a rounded-elbow SVG path that avoids nodes.
-//
-// Strategy:
-//   Stub: always leave/arrive horizontally (stub = 36px out from port).
-//   Forward (target is to the right): go to midX, vertical bridge, continue.
-//   Backward (target is to left or same X): loop — go right past source,
-//     drop below all nodes involved, go left, rise to target Y.
-// ---------------------------------------------------------------------------
-
-var CONN_R = 8;
-var STUB   = 28;
-
-function routedPath(x1, y1, x2, y2, srcNode, tgtNode) {
-
-  var srcRight  = srcNode ? srcNode.x + NODE_W  : x1;
-  var srcBottom = srcNode ? srcNode.y + NODE_H   : y1 + NODE_H / 2;
-  var srcTop    = srcNode ? srcNode.y             : y1 - NODE_H / 2;
-
-  var tgtLeft   = tgtNode ? tgtNode.x             : x2;
-  var tgtRight  = tgtNode ? tgtNode.x + NODE_W   : x2 + NODE_W;
-  var tgtBottom = tgtNode ? tgtNode.y + NODE_H   : y2 + NODE_H / 2;
-  var tgtTop    = tgtNode ? tgtNode.y             : y2 - NODE_H / 2;
-
-  // ── CASE 1: Forward (target node starts right of source node) ────────────
-  if (tgtLeft > srcRight + 1) {
-    var cx = (x1 + x2) / 2;
-    return 'M ' + r3(x1) + ' ' + r3(y1) +
-           ' C ' + r3(cx) + ' ' + r3(y1) +
-           ' ' + r3(cx) + ' ' + r3(y2) +
-           ' ' + r3(x2) + ' ' + r3(y2);
-  }
-
-  // ── CASE 2: Backward / overlapping — check for vertical gap between nodes
-  var nodesOverlapV = srcBottom > tgtTop + 2 && srcTop < tgtBottom - 2;
-
-  if (!nodesOverlapV) {
-    // Clear vertical corridor — route through the gap between the nodes.
-    // Path: exit right → vertical to gap midpoint → LEFT to target approach → vertical to target port → enter.
-    var gapY = srcBottom <= tgtTop
-      ? (srcBottom + tgtTop) / 2      // source above target
-      : (tgtBottom + srcTop) / 2;     // source below target
-
-    var turnX    = srcRight + STUB;           // right of source, stub out
-    var approachX = tgtNode ? tgtNode.x - STUB : x2 - STUB;  // LEFT of target node, arriving rightward
-
-    // approachX must be left of x2 (the input port) so the final segment goes rightward into it
-    approachX = Math.min(approachX, x2 - 4);
-
-    return roundedOrtho([
-      { x: x1,         y: y1   },
-      { x: turnX,      y: y1   },
-      { x: turnX,      y: gapY },
-      { x: approachX,  y: gapY },
-      { x: approachX,  y: y2   },
-      { x: x2,         y: y2   },
-    ], CONN_R);
-  }
-
-  // ── CASE 3: Nodes overlap vertically — must loop around the right side ───
-  var loopX = Math.max(srcRight, tgtRight) + 48;
-  var loopY = Math.max(srcBottom, tgtBottom) + 44;
-  return roundedOrtho([
-    { x: x1,        y: y1     },
-    { x: loopX,     y: y1     },
-    { x: loopX,     y: loopY  },
-    { x: x2 - STUB, y: loopY  },
-    { x: x2 - STUB, y: y2     },
-    { x: x2,        y: y2     },
-  ], CONN_R);
-}
-
-function roundedOrtho(pts, r) {
-  if (pts.length < 2) return '';
-  var d = 'M ' + r3(pts[0].x) + ' ' + r3(pts[0].y);
-  for (var i = 1; i < pts.length - 1; i++) {
-    var prev = pts[i - 1], curr = pts[i], next = pts[i + 1];
-    var dx1 = curr.x - prev.x, dy1 = curr.y - prev.y;
-    var len1 = Math.sqrt(dx1 * dx1 + dy1 * dy1) || 1;
-    var dx2 = next.x - curr.x, dy2 = next.y - curr.y;
-    var len2 = Math.sqrt(dx2 * dx2 + dy2 * dy2) || 1;
-    var rr = Math.min(r, len1 / 2, len2 / 2);
-    var bx = curr.x - (dx1 / len1) * rr;
-    var by = curr.y - (dy1 / len1) * rr;
-    var ax = curr.x + (dx2 / len2) * rr;
-    var ay = curr.y + (dy2 / len2) * rr;
-    d += ' L ' + r3(bx) + ' ' + r3(by);
-    d += ' Q ' + r3(curr.x) + ' ' + r3(curr.y) + ' ' + r3(ax) + ' ' + r3(ay);
-  }
-  d += ' L ' + r3(pts[pts.length - 1].x) + ' ' + r3(pts[pts.length - 1].y);
-  return d;
-}
-
-function r3(v) { return Math.round(v * 10) / 10; }
-
-// ---------------------------------------------------------------------------
-// Connection rendering
-// Each connection renders as two SVG paths:
-//   1. A wide transparent hit-area path (for click detection)
-//   2. The visible styled path
-// ---------------------------------------------------------------------------
-
-function refreshConnections() {
-  svgLayer.querySelectorAll('.mr-conn, .mr-conn-hit').forEach(function(el) {
-    el.parentNode.removeChild(el);
-  });
-
-  connections.forEach(function(conn) {
-    var fn = nodes.find(function(n) { return n.id === conn.fromId; });
-    var tn = nodes.find(function(n) { return n.id === conn.toId;   });
-    if (!fn || !tn) return;
-
-    var p1  = getPortPos(fn, 'output');
-    var p2  = getPortPos(tn, 'input');
-    var def = NODE_DEFS[fn.type] || {};
-    var d   = routedPath(p1.x, p1.y, p2.x, p2.y, fn, tn);
-    var isSelected = conn.id === selectedConnId;
-
-    // Visible path
-    var path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
-    path.setAttribute('class', 'mr-conn');
-    path.setAttribute('data-conn-id', conn.id);
-    path.setAttribute('d', d);
-    path.setAttribute('fill', 'none');
-    path.setAttribute('stroke', isSelected ? ACCENT : (def.borderColor || '#607888'));
-    path.setAttribute('stroke-width', isSelected ? '2.5' : '1.8');
-    path.setAttribute('stroke-opacity', isSelected ? '1' : '0.7');
-    path.setAttribute('marker-end', 'url(#mr-arrow)');
-    path.style.pointerEvents = 'none';
-    if (isSelected) {
-      path.setAttribute('stroke-dasharray', 'none');
-      path.setAttribute('filter', 'drop-shadow(0 0 4px ' + ACCENT + ')');
-    }
-    svgLayer.appendChild(path);
-
-    // Cycle badge — show Nx label at midpoint of path if cycle > 1
-    var cycles = conn.cycle || 1;
-    if (cycles > 1) {
-      var midX = (p1.x + p2.x) / 2;
-      var midY = (p1.y + p2.y) / 2;
-      var bgRect = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
-      bgRect.setAttribute('class', 'mr-conn');
-      bgRect.setAttribute('x', r3(midX - 14)); bgRect.setAttribute('y', r3(midY - 9));
-      bgRect.setAttribute('width', '28'); bgRect.setAttribute('height', '16');
-      bgRect.setAttribute('rx', '3');
-      bgRect.setAttribute('fill', isSelected ? ACCENT : '#1a2a3a');
-      bgRect.setAttribute('stroke', isSelected ? ACCENT : (def.borderColor || '#607888'));
-      bgRect.setAttribute('stroke-width', '1');
-      bgRect.style.pointerEvents = 'none';
-      svgLayer.appendChild(bgRect);
-      var badgeTxt = document.createElementNS('http://www.w3.org/2000/svg', 'text');
-      badgeTxt.setAttribute('class', 'mr-conn');
-      badgeTxt.setAttribute('x', r3(midX)); badgeTxt.setAttribute('y', r3(midY + 4));
-      badgeTxt.setAttribute('text-anchor', 'middle');
-      badgeTxt.setAttribute('font-size', '9');
-      badgeTxt.setAttribute('font-weight', '700');
-      badgeTxt.setAttribute('letter-spacing', '0.5');
-      badgeTxt.setAttribute('fill', isSelected ? '#fff' : '#c0d8e8');
-      badgeTxt.setAttribute('font-family', 'Consolas, monospace');
-      badgeTxt.style.pointerEvents = 'none';
-      badgeTxt.textContent = cycles + 'x';
-      svgLayer.appendChild(badgeTxt);
-    }
-
-    // Hit-area path (wider, transparent, clickable)
-    var hit = document.createElementNS('http://www.w3.org/2000/svg', 'path');
-    hit.setAttribute('class', 'mr-conn-hit');
-    hit.setAttribute('data-conn-id', conn.id);
-    hit.setAttribute('d', d);
-    hit.setAttribute('fill', 'none');
-    hit.setAttribute('stroke', 'transparent');
-    hit.setAttribute('stroke-width', '14');
-    hit.style.pointerEvents = 'stroke';
-    hit.style.cursor = 'pointer';
-
-    hit.addEventListener('click', function(e) {
-      e.stopPropagation();
-      selectConn(conn.id);
-    });
-    hit.addEventListener('contextmenu', function(e) {
-      e.preventDefault();
-      e.stopPropagation();
-      selectConn(conn.id);
-      showContextMenu(e.clientX, e.clientY, [
-        { label: 'Delete Connection', danger: true, action: function() { deleteConn(conn.id); } },
-      ]);
-    });
-    hit.addEventListener('mouseenter', function() {
-      if (conn.id !== selectedConnId) {
-        path.setAttribute('stroke-opacity', '1');
-        path.setAttribute('stroke-width', '2.2');
-      }
-    });
-    hit.addEventListener('mouseleave', function() {
-      if (conn.id !== selectedConnId) {
-        path.setAttribute('stroke-opacity', '0.7');
-        path.setAttribute('stroke-width', '1.8');
-      }
-    });
-
-    svgLayer.appendChild(hit);
-  });
-}
-
-// ---------------------------------------------------------------------------
-// Live connection preview while dragging
-// ---------------------------------------------------------------------------
-
-function updateLiveConnection(x2, y2) {
-  var live = document.getElementById('mr-live-conn');
-  if (!live) {
-    live = document.createElementNS('http://www.w3.org/2000/svg', 'path');
-    live.id = 'mr-live-conn';
-    live.setAttribute('fill', 'none');
-    live.setAttribute('stroke', ACCENT);
-    live.setAttribute('stroke-width', '2');
-    live.setAttribute('stroke-dasharray', '7 4');
-    live.setAttribute('stroke-opacity', '0.9');
-    live.style.pointerEvents = 'none';
-    svgLayer.appendChild(live);
-  }
-  var fn = nodes.find(function(n) { return n.id === dragState.fromId; });
-  if (!fn) return;
-  var p1 = getPortPos(fn, 'output');
-  live.setAttribute('d', routedPath(p1.x, p1.y, x2, y2, fn, null));
-}
-
-function removeLiveConnection() {
-  var live = document.getElementById('mr-live-conn');
-  if (live && live.parentNode) live.parentNode.removeChild(live);
-}
-
-// ---------------------------------------------------------------------------
-// Connection add / select / delete
-// ---------------------------------------------------------------------------
-
-function addConnection(fromId, toId) {
-  if (fromId === toId) return;
-  if (connections.find(function(c) { return c.fromId === fromId && c.toId === toId; })) return;
-  connections.push({ id: 'c' + (_cid++), fromId: fromId, toId: toId, cycle: 1 });
-  refreshConnections();
-  refreshRightPanel(); refreshCalcPanel();
-}
-
-function selectConn(connId) {
-  if (selectedId) { setNodeSelected(selectedId, false); selectedId = null; }
-  selectedConnId = connId;
-  leftMode = 'path';
-  refreshConnections();
-  refreshLeftPanel();
-}
-
-function deleteConn(connId) {
-  connections = connections.filter(function(c) { return c.id !== connId; });
-  if (selectedConnId === connId) selectedConnId = null;
-  refreshConnections();
-  refreshRightPanel(); refreshCalcPanel();
-}
-
-
-// ===========================================================================
-// CONTEXT MENU
-// ===========================================================================
-
-function showContextMenu(x, y, items) {
-  dismissContextMenu();
-  var menu = document.createElement('div');
-  menu.id = 'mr-ctx-menu';
-  Object.assign(menu.style, {
-    position: 'fixed', left: x + 'px', top: y + 'px',
-    background: '#0d1520', border: '1px solid rgba(255,255,255,0.18)',
-    borderRadius: '4px', zIndex: '99999', minWidth: '200px', padding: '4px 0',
-    boxShadow: '0 8px 32px rgba(0,0,0,0.7)',
-    fontFamily: "'Consolas','SF Mono',monospace",
-  });
-
-  items.forEach(function(item) {
-    if (item.separator) {
-      var sep = document.createElement('div');
-      Object.assign(sep.style, { height: '1px', background: 'rgba(255,255,255,0.18)', margin: '4px 0' });
-      menu.appendChild(sep); return;
-    }
-    if (item.header) {
-      var hdr = document.createElement('div');
-      Object.assign(hdr.style, { padding: '5px 16px 3px', fontSize: '8px', letterSpacing: '2px', textTransform: 'uppercase', color: '#6a8090' });
-      hdr.textContent = item.header;
-      menu.appendChild(hdr); return;
-    }
-    var row = document.createElement('div');
-    Object.assign(row.style, {
-      padding: '7px 16px', fontSize: '10px', letterSpacing: '0.5px',
-      cursor: item.action ? 'pointer' : 'default',
-      color: item.danger ? '#ef7777' : '#aabbcc',
-      display: 'flex', alignItems: 'center', gap: '10px',
-      transition: 'background 0.1s ease',
-    });
-    if (item.color) {
-      var dot = document.createElement('div');
-      Object.assign(dot.style, { width: '8px', height: '8px', borderRadius: '50%', background: item.color, flexShrink: '0' });
-      row.appendChild(dot);
-    }
-    var lbl = document.createElement('span'); lbl.textContent = item.label; row.appendChild(lbl);
-    if (item.action) {
-      row.addEventListener('mouseenter', function() { row.style.background = item.danger ? 'rgba(239,119,119,0.08)' : 'rgba(255,255,255,0.14)'; });
-      row.addEventListener('mouseleave', function() { row.style.background = 'none'; });
-      row.addEventListener('mousedown', function(e) { e.stopPropagation(); dismissContextMenu(); item.action(); });
-    }
-    menu.appendChild(row);
-  });
-
-  document.body.appendChild(menu);
-  ctxMenu = menu;
-  setTimeout(function() { document.addEventListener('mousedown', dismissContextMenu, { once: true }); }, 0);
-}
-
-function dismissContextMenu() {
-  if (ctxMenu && ctxMenu.parentNode) { ctxMenu.parentNode.removeChild(ctxMenu); ctxMenu = null; }
-}
-
-function onCanvasContextMenu(e) {
-  e.preventDefault();
-  var pos = getCanvasPos(e);
-  var cx = pos.x - NODE_W / 2;
-  var cy = pos.y - NODE_H / 2;
-
-  var items = [{ header: 'Add Node' }];
-  Object.keys(NODE_DEFS).forEach(function(type) {
-    var def = NODE_DEFS[type];
-    items.push({
-      label: def.label, color: def.borderColor,
-      action: (function(t, x, y) { return function() { createNode(t, x, y); }; })(type, cx, cy),
-    });
-  });
-  showContextMenu(e.clientX, e.clientY, items);
-}
-
-function onNodeContextMenu(e, nodeId) {
-  e.preventDefault(); e.stopPropagation();
-  showContextMenu(e.clientX, e.clientY, [
-    { label: 'Delete Node', danger: true,  action: function() { deleteNode(nodeId); } },
-    { separator: true },
-    { label: 'Duplicate',   danger: false, action: function() {
-      var orig = nodes.find(function(n) { return n.id === nodeId; });
-      if (!orig) return;
-      var newNode = createNode(orig.type, orig.x + 24, orig.y + 24);
-      newNode.params = JSON.parse(JSON.stringify(orig.params));
-      refreshNodeEl(newNode.id);
-    }},
-  ]);
-}
-
-
-// ===========================================================================
-// INTERACTION HANDLERS
-// ===========================================================================
-
-function getCanvasPos(e) {
-  var rect = canvasArea.getBoundingClientRect();
-  return {
-    x: (e.clientX - rect.left - panX) / zoom,
-    y: (e.clientY - rect.top  - panY) / zoom,
-  };
-}
-
-function findPortAtPoint(x, y) {
-  for (var i = 0; i < nodes.length; i++) {
-    var node = nodes[i];
-    var def  = NODE_DEFS[node.type];
-    var px, py, dist;
-    if (def.hasInput) {
-      px = node.x - PORT_R; py = node.y + NODE_H / 2;
-      dist = Math.sqrt(Math.pow(x - px, 2) + Math.pow(y - py, 2));
-      if (dist < PORT_HIT) return { nodeId: node.id, portType: 'input' };
-    }
-    if (def.hasOutput) {
-      px = node.x + NODE_W + PORT_R; py = node.y + NODE_H / 2;
-      dist = Math.sqrt(Math.pow(x - px, 2) + Math.pow(y - py, 2));
-      if (dist < PORT_HIT) return { nodeId: node.id, portType: 'output' };
-    }
-  }
-  return null;
-}
-
-function onCanvasMouseDown(e) {
-  var onBackground = e.target === canvasArea || e.target === nodesLayer || e.target.id === 'mr-svg' || e.target.id === 'mr-world';
-  if (onBackground) {
-    dismissContextMenu();
-    selectNode(null);
-    // Clear connection selection
-    if (selectedConnId) { selectedConnId = null; refreshConnections(); }
-    // Left button: start panning
-    if (e.button === 0 || e.button === 1) {
-      dragState = {
-        type: 'pan',
-        startClientX: e.clientX, startClientY: e.clientY,
-        origPanX: panX, origPanY: panY,
-      };
-      canvasArea.style.cursor = 'grabbing';
-      e.preventDefault();
-    }
-  }
-}
-
-function onNodeMouseDown(e, nodeId) {
-  if (e.target.classList.contains('mr-port')) return;
-  e.stopPropagation();
-  var node = nodes.find(function(n) { return n.id === nodeId; });
-  if (!node) return;
-  var pos = getCanvasPos(e);
-  dragState = { type: 'node', nodeId: nodeId, startX: pos.x, startY: pos.y, origX: node.x, origY: node.y };
-}
-
-function onMouseMove(e) {
-  if (!dragState || !canvasArea) return;
-
-  if (dragState.type === 'pan') {
-    panX = dragState.origPanX + (e.clientX - dragState.startClientX);
-    panY = dragState.origPanY + (e.clientY - dragState.startClientY);
-    applyWorldTransform();
-
-  } else if (dragState.type === 'node') {
-    var pos = getCanvasPos(e);
-    var node = nodes.find(function(n) { return n.id === dragState.nodeId; });
-    if (!node) return;
-    node.x = Math.max(0, dragState.origX + (pos.x - dragState.startX));
-    node.y = Math.max(0, dragState.origY + (pos.y - dragState.startY));
-    var el = document.getElementById('node-' + node.id);
-    if (el) { el.style.left = node.x + 'px'; el.style.top = node.y + 'px'; }
-    refreshConnections();
-
-  } else if (dragState.type === 'connect') {
-    var pos2 = getCanvasPos(e);
-    updateLiveConnection(pos2.x, pos2.y);
-  }
-}
-
-function onMouseUp(e) {
-  if (!dragState) return;
-
-  if (dragState.type === 'pan') {
-    canvasArea.style.cursor = 'default';
-
-  } else if (dragState.type === 'connect' && canvasArea) {
-    var pos = getCanvasPos(e);
-    var hit = findPortAtPoint(pos.x, pos.y);
-    if (hit && hit.portType === 'input' && hit.nodeId !== dragState.fromId) {
-      addConnection(dragState.fromId, hit.nodeId);
-    }
-    removeLiveConnection();
-  }
-
-  dragState = null;
-}
-
-function onKeyDown(e) {
-  if (!visible) return;
-  if ((e.code === 'Delete' || e.code === 'Backspace') && document.activeElement && document.activeElement.tagName !== 'INPUT' && document.activeElement.tagName !== 'TEXTAREA') {
-    if (selectedId)     deleteNode(selectedId);
-    if (selectedConnId) deleteConn(selectedConnId);
-  }
-  if (e.code === 'Escape') { dismissContextMenu(); selectNode(null); selectedConnId = null; refreshConnections(); }
-}
-
-
-function onCanvasWheel(e) {
-  e.preventDefault();
-  var rect   = canvasArea.getBoundingClientRect();
-  var mouseX = e.clientX - rect.left;
-  var mouseY = e.clientY - rect.top;
-
-  var delta   = e.deltaY > 0 ? 0.9 : 1.1;
-  var newZoom = Math.min(Math.max(zoom * delta, 0.2), 3);
-
-  // Zoom toward the mouse cursor position
-  panX = mouseX - (mouseX - panX) * (newZoom / zoom);
-  panY = mouseY - (mouseY - panY) * (newZoom / zoom);
-  zoom = newZoom;
-
-  applyWorldTransform();
-}
-
-function resetView() {
-  panX = 0; panY = 0; zoom = 1;
-  applyWorldTransform();
-}
-
-var SAVE_VERSION = '3.0';
+export var SAVE_VERSION = '3.0';
 
 function saveConfig() {
   // Deep-copy nodes so we store clean plain objects (no DOM refs)
-  var nodeSnapshot = nodes.map(function(n) {
+  var nodeSnapshot = S.getNodes().map(function(n) {
     return { id: n.id, type: n.type, label: n.label, x: n.x, y: n.y,
              params: JSON.parse(JSON.stringify(n.params || {})) };
   });
@@ -3514,12 +1337,12 @@ function saveConfig() {
     _version:     SAVE_VERSION,
     _type:        'forgeworks-mfg-review',
     _savedAt:     new Date().toISOString(),
-    _unitSystem:  unitSystem,
-    _nid:         _nid,
-    _cid:         _cid,
-    general:      JSON.parse(JSON.stringify(general)),
+    _unitSystem:  S.getUnitSystem(),
+    _nid: S.getNid(),
+    _cid: S.getCid(),
+    general:      JSON.parse(JSON.stringify(S.getGeneral())),
     nodes:        nodeSnapshot,
-    connections:  JSON.parse(JSON.stringify(connections)),
+    connections:  JSON.parse(JSON.stringify(S.getConnections())),
   };
 
   var json = JSON.stringify(payload, null, 2);
@@ -3529,8 +1352,8 @@ function saveConfig() {
 
   // Use job number + part number in filename if available
   var nameParts = ['mfg-review'];
-  if (general.jobNumber)  nameParts.push(general.jobNumber.replace(/[^a-zA-Z0-9\-_]/g, '-'));
-  if (general.partNumber) nameParts.push(general.partNumber.replace(/[^a-zA-Z0-9\-_]/g, '-'));
+  if (S.getGeneral().jobNumber)  nameParts.push(S.getGeneral().jobNumber.replace(/[^a-zA-Z0-9\-_]/g, '-'));
+  if (S.getGeneral().partNumber) nameParts.push(S.getGeneral().partNumber.replace(/[^a-zA-Z0-9\-_]/g, '-'));
   nameParts.push(new Date().toISOString().slice(0,10));
   a.download = nameParts.join('_') + '.json';
 
@@ -3565,33 +1388,33 @@ function loadConfig() {
 
         // ── General panel ─────────────────────────────────────────────────
         // Merge saved general into current defaults so new fields always exist
-        Object.keys(general).forEach(function(k) {
-          if (p.general && p.general[k] !== undefined) general[k] = p.general[k];
+        Object.keys(S.getGeneral()).forEach(function(k) {
+          if (p.general && p.general[k] !== undefined) S.getGeneral()[k] = p.general[k];
         });
         // Also pick up any keys in the saved file that we might not have defaulted
-        if (p.general) Object.assign(general, p.general);
+        if (p.general) S.patchGeneral(p.general);
 
         // ── Counters ──────────────────────────────────────────────────────
-        _nid = p._nid || 0;
-        _cid = p._cid || 0;
+        S.setNid(p._nid || 0);
+        S.setCid(p._cid || 0);
 
         // ── Unit system ───────────────────────────────────────────────────
         if (p._unitSystem === 'si' || p._unitSystem === 'imperial') {
-          unitSystem = p._unitSystem;
-          setDisplaySystem(unitSystem);
+          S.setUnitSystem(p._unitSystem);
+          setDisplaySystem(S.getUnitSystem());
           // Sync radio buttons if they exist
           ['si','imperial'].forEach(function(v) {
             var lbl = document.getElementById('mr-unit-label-' + v);
-            if (lbl) lbl.style.color = unitSystem === v ? ACCENT : '#7a9aaa';
+            if (lbl) lbl.style.color = S.getUnitSystem() === v ? ACCENT : '#7a9aaa';
             var rb = document.querySelector('input[name="mr-unit-system"][value="' + v + '"]');
-            if (rb) rb.checked = unitSystem === v;
+            if (rb) rb.checked = S.getUnitSystem() === v;
           });
         }
 
         // ── Nodes — migrate params to fill in any new fields ──────────────
-        nodes.forEach(function(n) { removeNodeEl(n.id); });
-        nodes = [];
-        connections = [];
+        S.getNodes().forEach(function(n) { removeNodeEl(n.id); });
+        S.setNodes([]);
+        S.setConnections([]);
 
         (p.nodes || []).forEach(function(nd) {
           var def = NODE_DEFS[nd.type];
@@ -3618,30 +1441,30 @@ function loadConfig() {
             y:      nd.y || 100,
             params: migratedParams,
           };
-          nodes.push(node);
+          S.pushNode(node);
           renderNodeEl(node);
         });
 
         // ── Connections ───────────────────────────────────────────────────
         // Validate that both endpoints still exist
-        var validNodeIds = nodes.map(function(n) { return n.id; });
-        connections = (p.connections || []).filter(function(c) {
+        var validNodeIds = S.getNodes().map(function(n) { return n.id; });
+        S.setConnections((p.connections || []).filter(function(c) {
           var ok = validNodeIds.indexOf(c.fromId) > -1 && validNodeIds.indexOf(c.toId) > -1;
           if (!ok) warnings.push('Connection ' + c.id + ' references missing node — removed.');
           return ok;
-        });
+        }));
 
         // ── Refresh everything ────────────────────────────────────────────
         refreshConnections();
         refreshLeftPanel();
         refreshRightPanel();
         refreshCalcPanel();
-        panX = 0; panY = 0; zoom = 1;
+        S.resetViewport();
         applyWorldTransform();
 
         // ── Feedback ─────────────────────────────────────────────────────
         var msg = 'Loaded: ' + file.name +
-          '\n' + nodes.length + ' nodes · ' + connections.length + ' connections' +
+          '\n' + S.getNodes().length + ' nodes · ' + S.getConnections().length + ' connections' +
           (fileVer < parseFloat(SAVE_VERSION) ? '\nMigrated from v' + fileVer + ' → v' + SAVE_VERSION : '');
         if (warnings.length > 0) msg += '\n\nWarnings:\n' + warnings.join('\n');
         showToast(msg);
@@ -3690,7 +1513,7 @@ function printToPDF() {
   var massOut  = last.massOut;
   var totalLoss = round3(massIn - massOut);
   var yieldPct  = massIn > 0 ? round3(massOut / massIn * 100) : 0;
-  var unitLabel = unitSystem === 'imperial' ? 'Imperial (in / lb / °F)' : 'Metric (mm / kg / °C)';
+  var unitLabel = S.getUnitSystem() === 'imperial' ? 'Imperial (in / lb / °F)' : 'Metric (mm / kg / °C)';
   var ts        = new Date().toLocaleString();
 
   var C_sans  = "'Segoe UI','Helvetica Neue',Arial,sans-serif";
@@ -3744,20 +1567,20 @@ function printToPDF() {
         '<div>'+
           '<div style="font-size:8px;letter-spacing:3px;text-transform:uppercase;color:'+C_faint+';margin-bottom:10px;border-bottom:1px solid '+C_border+';padding-bottom:6px">Job Information</div>'+
           '<table style="border-collapse:collapse;width:100%">'+
-            mRow('Job Number',  general.jobNumber  || '—')+
-            mRow('Part Number', general.partNumber || '—')+
-            mRow('Part Name',   general.partName   || '—')+
-            mRow('Revision',    general.revision   || '—')+
-            mRow('Customer',    general.customer   || '—')+
-            mRow('Work Order',  general.workOrder  || '—')+
+            mRow('Job Number',  S.getGeneral().jobNumber  || '—')+
+            mRow('Part Number', S.getGeneral().partNumber || '—')+
+            mRow('Part Name',   S.getGeneral().partName   || '—')+
+            mRow('Revision',    S.getGeneral().revision   || '—')+
+            mRow('Customer',    S.getGeneral().customer   || '—')+
+            mRow('Work Order',  S.getGeneral().workOrder  || '—')+
           '</table>'+
         '</div>'+
         '<div>'+
           '<div style="font-size:8px;letter-spacing:3px;text-transform:uppercase;color:'+C_faint+';margin-bottom:10px;border-bottom:1px solid '+C_border+';padding-bottom:6px">Document Information</div>'+
           '<table style="border-collapse:collapse;width:100%">'+
-            mRow('Engineer',      general.engineer     || '—')+
-            mRow('Date Created',  general.dateCreated  || '—')+
-            mRow('Status',       (general.status||'—').replace(/_/g,' '))+
+            mRow('Engineer',      S.getGeneral().engineer     || '—')+
+            mRow('Date Created',  S.getGeneral().dateCreated  || '—')+
+            mRow('Status',       (S.getGeneral().status||'—').replace(/_/g,' '))+
             mRow('Unit System',   unitLabel)+
             mRow('Process Steps', chain.length + ' steps')+
             mRow('Generated',     ts)+
@@ -3793,9 +1616,9 @@ function printToPDF() {
       }).join('')+
       '</div>'+
 
-      (general.notes?'<div style="padding:16px;border:1px solid '+C_border+';border-radius:4px;background:#fafafa">'+
+      (S.getGeneral().notes?'<div style="padding:16px;border:1px solid '+C_border+';border-radius:4px;background:#fafafa">'+
         '<div style="font-size:8px;letter-spacing:2px;text-transform:uppercase;color:'+C_faint+';margin-bottom:6px">Notes</div>'+
-        '<div style="font-size:11px;color:'+C_ink+';line-height:1.6">'+esc(general.notes)+'</div></div>':'')+
+        '<div style="font-size:11px;color:'+C_ink+';line-height:1.6">'+esc(S.getGeneral().notes)+'</div></div>':'')+
     '</div>'+
     '<div style="border-top:1px solid '+C_border+';padding-top:12px;display:flex;justify-content:space-between;font-size:8px;letter-spacing:1px;color:'+C_faint+';text-transform:uppercase">'+
       '<span>Forgeworks · Manufacturing Review</span><span>CONFIDENTIAL — FOR INTERNAL USE</span><span>Page 1</span>'+
@@ -3803,7 +1626,7 @@ function printToPDF() {
 
   // ── ONE PAGE PER STEP ────────────────────────────────────────────────────
   var stepsHTML = chain.map(function(step, idx) {
-    var node = nodes.find(function(n){ return n.id===step.nodeId; })||{};
+    var node = S.getNodes().find(function(n){ return n.id===step.nodeId; })||{};
     var def  = NODE_DEFS[step.nodeType]||{paramDefs:[]};
     var p    = node.params||{};
     var nc   = NODE_COLORS[step.nodeType]||{bg:'#222',text:'#fff',border:'#444'};
@@ -3937,7 +1760,7 @@ function printToPDF() {
       // Footer
       '<div style="margin-top:24px;border-top:1px solid '+C_border+';padding-top:10px;display:flex;justify-content:space-between;font-size:8px;letter-spacing:1px;color:'+C_faint+';text-transform:uppercase">'+
         '<span>Forgeworks · '+esc(step.label)+'</span>'+
-        '<span>Job: '+esc(general.jobNumber||'—')+'</span>'+
+        '<span>Job: '+esc(S.getGeneral().jobNumber||'—')+'</span>'+
         '<span>Step '+(idx+1)+' of '+chain.length+'</span>'+
       '</div>'+
     '</div>';
@@ -3998,7 +1821,7 @@ function printToPDF() {
   ].join('');
 
   var html = '<!DOCTYPE html><html><head><meta charset="UTF-8">'+
-    '<title>Forgeworks MFG Review \u2014 '+(general.jobNumber||'Export')+'</title>'+
+    '<title>Forgeworks MFG Review \u2014 '+(S.getGeneral().jobNumber||'Export')+'</title>'+
     '<style>'+css+'</style></head><body>'+
     coverHTML + stepsHTML + summaryPage +
     '</body></html>';
@@ -4042,9 +1865,9 @@ function exportToExcel() {
   var rows = [];
   rows.push(['FORGEWORKS — MANUFACTURING REVIEW', '', '', '']);
   rows.push(['', '', '', '']);
-  rows.push(['Job Number', general.jobNumber || '—', 'Customer', general.customer || '—']);
-  rows.push(['Engineer',   general.engineer  || '—', 'Date',     general.dateCreated || '—']);
-  rows.push(['Status',     general.status    || '—', 'Units',    unitSystem === 'imperial' ? 'Imperial' : 'Metric']);
+  rows.push(['Job Number', S.getGeneral().jobNumber || '—', 'Customer', S.getGeneral().customer || '—']);
+  rows.push(['Engineer',   S.getGeneral().engineer  || '—', 'Date',     S.getGeneral().dateCreated || '—']);
+  rows.push(['Status',     S.getGeneral().status    || '—', 'Units',    S.getUnitSystem() === 'imperial' ? 'Imperial' : 'Metric']);
   rows.push(['', '', '', '']);
   rows.push(['SUMMARY', '', '', '']);
   rows.push(['Mass In', dMass(massIn), 'Mass Out', dMass(massOut)]);
@@ -4089,7 +1912,7 @@ function exportToExcel() {
   });
 
   xml += '</Table></Worksheet></Workbook>';
-  var fn = 'mfg-review-' + (general.jobNumber || 'export').replace(/\s+/g,'-') + '.xls';
+  var fn = 'mfg-review-' + (S.getGeneral().jobNumber || 'export').replace(/\s+/g,'-') + '.xls';
   exportDownload(fn, xml, 'application/vnd.ms-excel');
 }
 
@@ -4115,9 +1938,9 @@ function exportToCSV() {
 
   var lines = [];
   lines.push(csvRow(['Forgeworks Manufacturing Review']));
-  lines.push(csvRow(['Job', general.jobNumber||'', 'Customer', general.customer||'']));
-  lines.push(csvRow(['Engineer', general.engineer||'', 'Date', general.dateCreated||'']));
-  lines.push(csvRow(['Units', unitSystem === 'imperial' ? 'Imperial' : 'Metric']));
+  lines.push(csvRow(['Job', S.getGeneral().jobNumber||'', 'Customer', S.getGeneral().customer||'']));
+  lines.push(csvRow(['Engineer', S.getGeneral().engineer||'', 'Date', S.getGeneral().dateCreated||'']));
+  lines.push(csvRow(['Units', S.getUnitSystem() === 'imperial' ? 'Imperial' : 'Metric']));
   lines.push('');
   lines.push(csvRow(['SUMMARY', '', '', '']));
   lines.push(csvRow(['Mass In', dMass(massIn), 'Mass Out', dMass(massOut)]));
@@ -4138,7 +1961,7 @@ function exportToCSV() {
     lines.push('');
   });
 
-  var fn = 'mfg-review-' + (general.jobNumber || 'export').replace(/\s+/g,'-') + '.csv';
+  var fn = 'mfg-review-' + (S.getGeneral().jobNumber || 'export').replace(/\s+/g,'-') + '.csv';
   exportDownload(fn, lines.join('\r\n'), 'text/csv');
 }
 
@@ -4157,12 +1980,12 @@ function exportToTxt() {
 
   lines.push('FORGEWORKS  ·  MANUFACTURING REVIEW');
   lines.push(HR);
-  lines.push('Job       ' + (general.jobNumber  || '—'));
-  lines.push('Customer  ' + (general.customer   || '—'));
-  lines.push('Engineer  ' + (general.engineer   || '—'));
-  lines.push('Date      ' + (general.dateCreated|| '—'));
-  lines.push('Status    ' + (general.status     || '—'));
-  lines.push('Units     ' + (unitSystem === 'imperial' ? 'Imperial' : 'Metric'));
+  lines.push('Job       ' + (S.getGeneral().jobNumber  || '—'));
+  lines.push('Customer  ' + (S.getGeneral().customer   || '—'));
+  lines.push('Engineer  ' + (S.getGeneral().engineer   || '—'));
+  lines.push('Date      ' + (S.getGeneral().dateCreated|| '—'));
+  lines.push('Status    ' + (S.getGeneral().status     || '—'));
+  lines.push('Units     ' + (S.getUnitSystem() === 'imperial' ? 'Imperial' : 'Metric'));
   lines.push(HR);
   lines.push('SUMMARY');
   lines.push('  Mass In   ' + dMass(massIn));
@@ -4188,7 +2011,7 @@ function exportToTxt() {
   lines.push('Generated  ' + new Date().toLocaleString());
   lines.push('Forgeworks MFG-REVIEW v2.0');
 
-  var fn = 'mfg-review-' + (general.jobNumber || 'export').replace(/\s+/g,'-') + '.txt';
+  var fn = 'mfg-review-' + (S.getGeneral().jobNumber || 'export').replace(/\s+/g,'-') + '.txt';
   exportDownload(fn, lines.join('\n'), 'text/plain');
 }
 
@@ -4197,7 +2020,7 @@ function exportToTxt() {
 // REUSABLE INPUT COMPONENTS
 // ===========================================================================
 
-function buildInputSection(title, fields) {
+export function buildInputSection(title, fields) {
   var section = document.createElement('div');
   Object.assign(section.style, { display: 'flex', flexDirection: 'column', gap: '8px' });
   var hdr = document.createElement('div');
@@ -4211,7 +2034,7 @@ function buildInputSection(title, fields) {
   return section;
 }
 
-function buildTextInput(label, id, value, onChange) {
+export function buildTextInput(label, id, value, onChange) {
   var wrap = fWrap();
   wrap.appendChild(fLabel(label, id));
   var inp = document.createElement('input');
@@ -4222,7 +2045,7 @@ function buildTextInput(label, id, value, onChange) {
   return wrap;
 }
 
-function buildNumberInputEl(label, id, value, min, max, step, onChange) {
+export function buildNumberInputEl(label, id, value, min, max, step, onChange) {
   var wrap = fWrap();
   wrap.appendChild(fLabel(label, id));
   var inp = document.createElement('input');
@@ -4234,7 +2057,7 @@ function buildNumberInputEl(label, id, value, min, max, step, onChange) {
   return wrap;
 }
 
-function buildSelectEl(label, id, options, value, onChange) {
+export function buildSelectEl(label, id, options, value, onChange) {
   var wrap = fWrap();
   wrap.appendChild(fLabel(label, id));
   var sel = document.createElement('select');
@@ -4250,7 +2073,7 @@ function buildSelectEl(label, id, options, value, onChange) {
   return wrap;
 }
 
-function buildTextareaInput(label, id, value, onChange) {
+export function buildTextareaInput(label, id, value, onChange) {
   var wrap = fWrap();
   wrap.appendChild(fLabel(label, id));
   var ta = document.createElement('textarea');
@@ -4274,26 +2097,26 @@ function refreshStatusBadge() {
     released: { bg: 'rgba(80,160,255,0.10)',  color: '#60b0ff', border: 'rgba(80,160,255,0.35)'  },
     obsolete: { bg: 'rgba(160,80,80,0.10)',   color: '#cc8888', border: 'rgba(160,80,80,0.35)'   },
   };
-  var c = colors[general.status] || colors.draft;
-  el.textContent = general.status.toUpperCase();
+  var c = colors[S.getGeneral().status] || colors.draft;
+  el.textContent = S.getGeneral().status.toUpperCase();
   el.style.background = c.bg;
   el.style.color = c.color;
   el.style.borderColor = c.border;
 }
 
-function fWrap() {
+export function fWrap() {
   var el = document.createElement('div');
   Object.assign(el.style, { display: 'flex', flexDirection: 'column', gap: '4px' });
   return el;
 }
-function fLabel(text, forId) {
+export function fLabel(text, forId) {
   var lbl = document.createElement('label');
   lbl.htmlFor = forId;
   Object.assign(lbl.style, { fontSize: '8px', letterSpacing: '1.5px', textTransform: 'uppercase', color: '#99b0c0' });
   lbl.textContent = text;
   return lbl;
 }
-function sInput(el) {
+export function sInput(el) {
   Object.assign(el.style, {
     background: 'rgba(255,255,255,0.14)', border: '2px solid rgba(255,255,255,0.18)',
     borderRadius: '3px', color: '#c0ccd8', padding: '6px 8px', fontSize: '11px',
@@ -4354,24 +2177,24 @@ function buildDefaultGraph() {
 
 export function show() {
   buildOverlay();
-  overlay.style.display = 'flex';
-  visible = true;
-  setDisplaySystem(unitSystem);   // sync unit lib to current default
+  S.getOverlay().style.display = 'flex';
+  S.setVisible(true);
+  setDisplaySystem(S.getUnitSystem());   // sync unit lib to current default
   refreshLeftPanel();
   refreshStatusBadge();
-  if (nodes.length === 0) {
-    panX = 0; panY = 0; zoom = 1;
+  if (S.getNodes().length === 0) {
+    S.resetViewport();
     buildDefaultGraph();
   }
   applyWorldTransform();
 }
 
 export function hide() {
-  if (overlay) overlay.style.display = 'none';
-  visible = false;
+  if (S.getOverlay()) S.getOverlay().style.display = 'none';
+  S.setVisible(false);
   dismissContextMenu();
 }
 
-export function isVisible() { return visible; }
+export function isVisible() { return S.isVisible(); }
 
-export function onBack(callback) { backCallback = callback; }
+export function onBack(callback) { S.setBackCallback(callback); }
