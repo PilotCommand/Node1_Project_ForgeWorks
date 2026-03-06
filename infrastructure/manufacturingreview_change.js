@@ -84,141 +84,20 @@ var general = {
 // Reference Data
 // ---------------------------------------------------------------------------
 
-// ---------------------------------------------------------------------------
-// Material Catalog — two-level: family → grades
-// densityDefault in g/cm³ (SI). Used to auto-populate the density field
-// when the user changes family. Editable per-job in the node detail panel.
-// ---------------------------------------------------------------------------
-var MATERIAL_CATALOG = {
-  carbon_steel: {
-    label: 'Carbon Steel',
-    densityDefault: 7.85,
-    grades: [
-      '1006', '1008', '1015', '1018', '1022', '1026',
-      '1035', '1040', '1045', '1045 de 1', '1045 de 2',
-      'AMS 1015', 'AMS 1035',
-      'Electrical Iron',
-      'Grade 4 ASTM-A-596 Magnet Steel',
-      'SA-508 Class 1', 'SA-508 Class 1a',
-    ],
-  },
-  standard_alloy_steel: {
-    label: 'Standard Steel Alloy',
-    densityDefault: 7.85,
-    grades: [
-      '4130', '4140', '4320', '4330 MOD', '4340', '4340 HI TRANS',
-      '4340 MOD (300M)', '4620', '6150', '8620', '8630', '8740',
-      '9310', '52100',
-      'Grade B-7', 'Grade B-23',
-    ],
-  },
-  special_alloy_steel: {
-    label: 'Special Steel Alloy',
-    densityDefault: 7.85,
-    grades: [
-      '1-1/4 CR 1/2 MO F-11',
-      '2-1/4 CR 1 MO F-22',
-      '5 CR 1/2 MO F-5a (201)',
-      'AMS-6304',
-      'CHROMOLOY',
-      'D6AC',
-      'F-9', 'F-91',
-      'Grade B-16', 'Grade B-24',
-      'HY-80', 'HY-100',
-      'NITRIDING STEEL 135M',
-      'SA-508-CL 2', 'SA-508-CL 3', 'SA-508-CL 4',
-    ],
-  },
-  stainless_chromium: {
-    label: 'Stainless — Chromium Types',
-    densityDefault: 7.75,
-    grades: [
-      '403', '403 ESR', '403 VAR',
-      '405', '410', '416', '420', '422 ESR',
-      '430', '431',
-      '440A', '440C', '440C VAR',
-      'F6NM',
-      'Greek Ascaloy',
-    ],
-  },
-  copper_based: {
-    label: 'Copper Based',
-    densityDefault: 8.94,
-    grades: [
-      'OFHC Copper',
-      '70-30 CU-NI ESR',
-    ],
-  },
-  stainless_chrome_nickel: {
-    label: 'Stainless — Chrome Nickel Types',
-    densityDefault: 7.93,
-    grades: [
-      '254 SMO',
-      '302', '303S', '303SE',
-      '304/304L', '304L ESR', '304L VAR',
-      '309', '310', '316/316L', '316L VAR', '317',
-      '321', '321 VAR',
-      '348 LO CO',
-      '2205',
-      'AL-6XN',
-      'Carpenter 20 CB-3',
-      'FER 255',
-      'Nitronic 40', 'Nitronic 50', 'Nitronic 60',
-    ],
-  },
-  stainless_ph: {
-    label: 'Stainless — Precipitation Hardenable',
-    densityDefault: 7.78,
-    grades: [
-      '15-5PH ESR', '15-5PH VAR',
-      '17-4PH', '17-4PH VAR',
-      'PH 13-8MO', 'PH 15-7MO',
-    ],
-  },
-  nickel_alloy: {
-    label: 'Nickel and Nickel Copper',
-    densityDefault: 8.20,
-    grades: [
-      'Alloy 214', 'Alloy 230',
-      'Alloy 600', 'Alloy 600T', 'Alloy 601',
-      'Alloy 617', 'Alloy 625',
-      'Alloy 690',
-      'Alloy 706', 'Alloy 718', 'Alloy 725',
-      'Alloy 800 HT', 'Alloy 825',
-      'Alloy 901', 'Alloy 925',
-      'Alloy A286',
-      'Alloy B2',
-      'Alloy C-22', 'Alloy C-276',
-      'Alloy S', 'Alloy X', 'Alloy X750',
-    ],
-  },
-  cobalt: {
-    label: 'Cobalt',
-    densityDefault: 8.30,
-    grades: [
-      'Alloy HS-188',
-      'Alloy L-605',
-      'Alloy N-155',
-    ],
-  },
-  aluminum: {
-    label: 'Aluminum',
-    densityDefault: 2.71,
-    grades: [
-      '1100', '2014', '2024', '2219', '2618',
-      '3003', '5083', '6061',
-      '7050', '7075', '7079',
-    ],
-  },
-  titanium: {
-    label: 'Titanium',
-    densityDefault: 4.43,
-    grades: [
-      'CP Grade 2', 'CP Grade 4', 'CP Grade 6',
-      '6AL-4V',
-    ],
-  },
-};
+var MATERIALS = [
+  { code: '1018',  name: '1018 Carbon Steel',      density: 7.87 },
+  { code: '1045',  name: '1045 Medium Carbon',     density: 7.85 },
+  { code: '4130',  name: '4130 Chromoly',           density: 7.85 },
+  { code: '4140',  name: '4140 Chrome-Moly',        density: 7.85 },
+  { code: '4340',  name: '4340 Ni-Cr-Mo',           density: 7.85 },
+  { code: '8620',  name: '8620 Case Hardening',     density: 7.85 },
+  { code: '304SS', name: '304 Stainless',           density: 7.93 },
+  { code: '316SS', name: '316 Stainless',           density: 7.98 },
+  { code: 'H13',   name: 'H13 Tool Steel',          density: 7.75 },
+  { code: '6061',  name: '6061 Aluminium',          density: 2.70 },
+  { code: '7075',  name: '7075 Aluminium',          density: 2.81 },
+  { code: 'Ti64',  name: 'Ti-6Al-4V Titanium',      density: 4.43 },
+];
 
 // ---------------------------------------------------------------------------
 // Node Type Definitions
@@ -226,23 +105,14 @@ var MATERIAL_CATALOG = {
 
 var NODE_DEFS = {
 
-  // ── STOCK IN ──────────────────────────────────────────────────────────────
-  // This forge buys ingots and billets in three cross-section geometries.
   stock_in: {
     label: 'Stock In', color: '#3a1208', textColor: '#ffb090', borderColor: '#e05c3a',
     hasInput: false, hasOutput: true,
     defaultParams: {
       poNumber: '', heatNumber: '', supplier: '', certNumber: '',
-      stockType: 'billet',          // ingot | billet
-      materialFamily: 'carbon_steel', grade: '4140', condition: 'annealed', density: 7.85,
-      mfgMethod: 'ingot_cast', priorHT: 'none', grainDir: 'longitudinal', grainSize: '',
-      // Geometry: round_cylinder | rectangular_prism | round_corner_square
-      geometry: 'round_cylinder',
-      diameter: 400,                // round_cylinder
-      width: 300, sectionHeight: 300,   // rectangular_prism  (renamed from 'height' to avoid clash)
-      side: 300,  cornerRadius: 30, // round_corner_square
-      length: 1000,                 // all geometries
-      quantity: 1,
+      baseAlloy: 'carbon_alloy_steel', material: '4140', condition: 'annealed', density: 7.85,
+      mfgMethod: 'continuous_cast', priorHT: 'none', grainDir: 'longitudinal', grainSize: '',
+      geometry: 'round_bar', diameter: 150, length: 3000, wallThickness: 0, quantity: 1,
     },
     paramDefs: [
       { section: 'Procurement' },
@@ -250,98 +120,96 @@ var NODE_DEFS = {
       { key: 'heatNumber', label: 'Heat / Lot #',    type: 'text' },
       { key: 'supplier',   label: 'Supplier / Mill', type: 'text' },
       { key: 'certNumber', label: 'Mill Cert #',     type: 'text' },
-      { section: 'Stock Type' },
-      { key: 'stockType', label: 'Stock Type', type: 'select', options: ['ingot','billet'] },
-      { section: 'Material' },
-      { key: 'materialFamily', label: 'Material Family', type: 'material_family' },
-      { key: 'grade',          label: 'Grade',           type: 'grade_lookup'    },
+      { section: 'Material Chemistry' },
+      { key: 'baseAlloy', label: 'Alloy System', type: 'select', options: [
+        'carbon_alloy_steel','stainless_steel','tool_steel','cast_iron',
+        'aluminum','copper_brass','nickel','titanium',
+        'cobalt','magnesium','tungsten','superalloy','other',
+      ]},
+      { key: 'material', label: 'Grade / Designation', type: 'select', options: [
+        '1018','1045','1080','4130','4140','4340','4620','8620','52100',
+        'H13','D2','M2','A2','S7',
+        '304','316L','410','17-4PH','15-5PH',
+        'inconel718','inconel625','waspaloy','hastelloy_X',
+        'ti-6al-4v','ti-6al-2sn-4zr-2mo',
+        '6061-T6','7075-T6','2024-T4',
+        'C11000','C17200',
+        'custom',
+      ]},
       { key: 'condition', label: 'Incoming Condition', type: 'select', options: [
         'annealed','normalized','as_rolled','as_cast','quench_temper','stress_relief','unknown',
       ]},
       { key: 'density', label: 'Density', unitType: 'density', type: 'number', min: 0.5, max: 25, step: 0.01 },
       { section: 'Prior Processing' },
       { key: 'mfgMethod', label: 'Manufacturing Method', type: 'select', options: [
-        'ingot_cast','continuous_cast','forged','rolled','unknown',
+        'continuous_cast','ingot_cast','forged','rolled','extruded','drawn','sintered','unknown',
       ]},
       { key: 'priorHT', label: 'Prior Heat Treatment', type: 'select', options: [
-        'none','annealed','normalized','quench_temper','stress_relief','unknown',
+        'none','annealed','normalized','quench_temper','stress_relief','case_hardened','unknown',
       ]},
-      { key: 'grainDir',  label: 'Grain Direction', type: 'select', options: ['longitudinal','transverse','unknown','not_applicable'] },
+      { key: 'grainDir',  label: 'Grain Direction',    type: 'select', options: ['longitudinal','transverse','unknown','not_applicable'] },
       { key: 'grainSize', label: 'Grain Size (ASTM #)', type: 'text' },
       { section: 'Geometry' },
-      { key: 'geometry', label: 'Cross-Section', type: 'select', options: [
-        'round_cylinder','rectangular_prism','round_corner_square',
-      ], refreshPanel: true },
-      { key: 'diameter',      label: 'Diameter',        unitType: 'length', type: 'number', min: 1, max: 5000,  step: 1,
-        showWhen: function(p) { return p.geometry === 'round_cylinder'; } },
-      { key: 'width',         label: 'Width',           unitType: 'length', type: 'number', min: 1, max: 5000,  step: 1,
-        showWhen: function(p) { return p.geometry === 'rectangular_prism'; } },
-      { key: 'sectionHeight', label: 'Height',          unitType: 'length', type: 'number', min: 1, max: 5000,  step: 1,
-        showWhen: function(p) { return p.geometry === 'rectangular_prism'; } },
-      { key: 'side',          label: 'Side',            unitType: 'length', type: 'number', min: 1, max: 5000,  step: 1,
-        showWhen: function(p) { return p.geometry === 'round_corner_square'; } },
-      { key: 'cornerRadius',  label: 'Corner Radius',   unitType: 'length', type: 'number', min: 0, max: 500,   step: 1,
-        showWhen: function(p) { return p.geometry === 'round_corner_square'; } },
-      { key: 'length',        label: 'Length',          unitType: 'length', type: 'number', min: 1, max: 20000, step: 1 },
+      { key: 'geometry', label: 'Stock Form', type: 'select', options: [
+        'round_bar','square_bar','flat_bar','hexagonal_bar',
+        'billet','bloom','slab','ingot','tube','ring','plate','sheet',
+      ]},
+      { key: 'diameter',      label: 'Diameter / Width', unitType: 'length', type: 'number', min: 1,  max: 5000,  step: 1 },
+      { key: 'length',        label: 'Length / Height',  unitType: 'length', type: 'number', min: 1,  max: 20000, step: 1 },
+      { key: 'wallThickness', label: 'Wall Thickness',   unitType: 'length', type: 'number', min: 0,  max: 2000,  step: 0.5 },
       { section: 'Quantity' },
-      { key: 'quantity', label: 'Pieces', type: 'number', min: 1, max: 9999, step: 1 },
+      { key: 'quantity', label: 'Pieces / Bars', type: 'number', min: 1, max: 9999, step: 1 },
     ],
   },
 
-  // ── SAW / CUT ─────────────────────────────────────────────────────────────
   cut: {
-    label: 'Saw / Cut', color: '#101820', textColor: '#99bbcc', borderColor: '#405060',
+    label: 'Cut / Size', color: '#101820', textColor: '#99bbcc', borderColor: '#405060',
     hasInput: true, hasOutput: true,
     defaultParams: {
-      purpose: 'cut_to_length',   // cut_to_length | crop_ends | section
-      sawType: 'band_saw',        // band_saw | cold_saw
-      bladeType: 'bi_metal',
-      coolant: 'flood',
-      kerfMm: 6,
-      cropBothEnds: 'yes',        // crop head & tail (inclusion-rich zones)
-      cropHeadMm: 75, cropTailMm: 50,
-      targetLength: 500,
-      numPieces: 1,
-      notes: '',
+      method: 'saw', bladeType: 'bi_metal', coolant: 'flood',
+      kerfMm: 4, cropLossMm: 150, targetLength: 200,
+      surfaceReq: 'as_cut', notes: '',
     },
     paramDefs: [
-      { section: 'Operation' },
-      { key: 'purpose',  label: 'Purpose', type: 'select', options: [
-        'cut_to_length','crop_ends','section',
+      { section: 'Method' },
+      { key: 'method',    label: 'Cutting Method', type: 'select', options: [
+        'saw','shear','torch','abrasive_wheel','wire_edm','lathe_part_off',
       ]},
-      { section: 'Saw Setup' },
-      { key: 'sawType',   label: 'Saw Type',      type: 'select', options: ['band_saw','cold_saw'] },
-      { key: 'bladeType', label: 'Blade Type',    type: 'select', options: ['bi_metal','carbide_tipped','high_speed_steel'] },
-      { key: 'coolant',   label: 'Coolant',       type: 'select', options: ['flood','mist','dry'] },
-      { key: 'kerfMm',    label: 'Kerf Width',    unitType: 'length', type: 'number', min: 1, max: 30, step: 0.5 },
-      { section: 'Cropping' },
-      { key: 'cropBothEnds', label: 'Crop Ends',     type: 'select', options: ['yes','no'], refreshPanel: true },
-      { key: 'cropHeadMm',   label: 'Head Crop',     unitType: 'length', type: 'number', min: 0, max: 500, step: 5,
-        showWhen: function(p) { return p.cropBothEnds === 'yes'; } },
-      { key: 'cropTailMm',   label: 'Tail Crop',     unitType: 'length', type: 'number', min: 0, max: 500, step: 5,
-        showWhen: function(p) { return p.cropBothEnds === 'yes'; } },
-      { section: 'Output' },
-      { key: 'targetLength', label: 'Target Length',  unitType: 'length', type: 'number', min: 1, max: 10000, step: 1 },
-      { key: 'numPieces',    label: 'Pieces Cut',     type: 'number', min: 1, max: 999, step: 1 },
-      { key: 'notes',        label: 'Notes',           type: 'text' },
+      { key: 'bladeType', label: 'Blade / Wheel',  type: 'select', options: [
+        'bi_metal','carbide_tipped','diamond','abrasive_wheel','torch_tip','not_applicable',
+      ]},
+      { key: 'coolant',   label: 'Coolant',         type: 'select', options: ['flood','mist','dry','air_blast'] },
+      { section: 'Dimensions' },
+      { key: 'kerfMm',       label: 'Kerf Width',   unitType: 'length', type: 'number', min: 0,  max: 30,    step: 0.5 },
+      { key: 'cropLossMm',   label: 'Crop Loss',    unitType: 'length', type: 'number', min: 0,  max: 1000,  step: 1   },
+      { key: 'targetLength', label: 'Blank Length', unitType: 'length', type: 'number', min: 1,  max: 10000, step: 1   },
+      { section: 'Quality' },
+      { key: 'surfaceReq', label: 'End Condition', type: 'select', options: [
+        'as_cut','deburred','faced','ground_flat','inspected',
+      ]},
+      { key: 'notes', label: 'Notes', type: 'text' },
     ],
   },
 
-  // ── HEAT (forge furnace) ──────────────────────────────────────────────────
-  // Gas-fired (primary) or electric (small jobs).
   heat: {
-    label: 'Heat To Work', color: '#201000', textColor: '#ffe090', borderColor: '#b07010',
+    label: 'Heat', color: '#201000', textColor: '#ffe090', borderColor: '#b07010',
     hasInput: true, hasOutput: true,
     defaultParams: {
-      furnaceType: 'gas', atmosphere: 'air', loadMethod: 'batch',
+      furnaceType: 'gas_fired', atmosphere: 'air', loadMethod: 'batch',
       targetTemp: 1200, minTemp: 1100, soakMin: 30, scaleLossPct: 1.5,
       furnaceId: '',
     },
     paramDefs: [
       { section: 'Furnace' },
-      { key: 'furnaceType', label: 'Furnace Type',   type: 'select', options: ['gas','electric'] },
-      { key: 'atmosphere',  label: 'Atmosphere',     type: 'select', options: ['air','nitrogen','controlled_carbon'] },
-      { key: 'loadMethod',  label: 'Loading Method', type: 'select', options: ['single_piece','batch','rotary_hearth'] },
+      { key: 'furnaceType', label: 'Furnace Type', type: 'select', options: [
+        'gas_fired','electric_resistance','induction','salt_bath','fluidized_bed','radiant_tube','car_bottom',
+      ]},
+      { key: 'atmosphere',  label: 'Atmosphere',   type: 'select', options: [
+        'air','nitrogen','endothermic','exothermic','vacuum','argon','salt',
+      ]},
+      { key: 'loadMethod',  label: 'Loading Method', type: 'select', options: [
+        'single_piece','batch','conveyor','rotary_hearth','walking_beam',
+      ]},
       { key: 'furnaceId',   label: 'Furnace ID / #', type: 'text' },
       { section: 'Temperature' },
       { key: 'targetTemp',   label: 'Target Temp',    unitType: 'temp', type: 'number', min: 0, max: 1450, step: 10 },
@@ -352,65 +220,42 @@ var NODE_DEFS = {
     ],
   },
 
-  // ── FORGE (press or hammer) ───────────────────────────────────────────────
   forge: {
     label: 'Forge', color: '#200800', textColor: '#ffaa70', borderColor: '#a03008',
     hasInput: true, hasOutput: true,
     defaultParams: {
-      equipment: 'press',      // press | hammer
-      process: 'open_die',     // open_die | closed_die | upset
-      pressTonnage: 2500, numHits: 1,
+      process: 'open_die', equipment: 'hydraulic_press',
+      pressTonnage: 2500, numHits: 3,
       dieTemp: 200, lubricant: 'graphite', dieNumber: '',
-      flashPct: 0, forgeRatio: 3.0,
-      outDiameter: 200, outHeight: 150,
+      flashPct: 15, forgeRatio: 3.0,
+      outDiameter: 100, outHeight: 150,
     },
     paramDefs: [
-      { section: 'Equipment' },
-      { key: 'equipment',    label: 'Equipment',        type: 'select', options: ['press','hammer'] },
-      { key: 'process',      label: 'Process Type',     type: 'select', options: ['open_die','closed_die','upset'] },
-      { key: 'pressTonnage', label: 'Tonnage (ton)',     type: 'number', min: 10, max: 50000, step: 50 },
-      { key: 'numHits',      label: 'Hits / Strokes',   type: 'number', min: 1,  max: 500,   step: 1  },
+      { section: 'Process' },
+      { key: 'process',   label: 'Process Type', type: 'select', options: [
+        'open_die','closed_die','upset','ring_roll','hammer','isothermal','near_net_shape',
+      ]},
+      { key: 'equipment', label: 'Equipment',    type: 'select', options: [
+        'hydraulic_press','mechanical_press','screw_press',
+        'drop_hammer','counterblow','ring_mill','forge_roll',
+      ]},
+      { key: 'pressTonnage', label: 'Press Tonnage (ton)', type: 'number', min: 10, max: 50000, step: 50 },
+      { key: 'numHits',      label: 'Hits / Strokes',      type: 'number', min: 1,  max: 100,   step: 1  },
       { section: 'Tooling' },
-      { key: 'dieNumber', label: 'Die / Tool #',      type: 'text' },
-      { key: 'dieTemp',   label: 'Die Preheat Temp',  unitType: 'temp', type: 'number', min: 0, max: 500, step: 10 },
-      { key: 'lubricant', label: 'Lubricant',          type: 'select', options: ['graphite','oil_graphite','dry','none'] },
+      { key: 'dieNumber', label: 'Die / Tool #',     type: 'text' },
+      { key: 'dieTemp',   label: 'Die Preheat Temp', unitType: 'temp', type: 'number', min: 0, max: 500, step: 10 },
+      { key: 'lubricant', label: 'Lubricant',         type: 'select', options: [
+        'graphite','glass','oil_graphite','molybdenum_disulfide','dry','none',
+      ]},
       { section: 'Material Flow' },
-      { key: 'flashPct',   label: 'Flash Allowance (%)', type: 'number', min: 0, max: 50, step: 0.5 },
-      { key: 'forgeRatio', label: 'Forge Ratio (R)',     type: 'number', min: 1, max: 20, step: 0.1 },
+      { key: 'flashPct',   label: 'Flash Allowance (%)', type: 'number', min: 0,  max: 50, step: 0.5 },
+      { key: 'forgeRatio', label: 'Forge Ratio (R)',     type: 'number', min: 1,  max: 20, step: 0.1 },
       { section: 'Output Dimensions' },
       { key: 'outDiameter', label: 'Output Diameter', unitType: 'length', type: 'number', min: 1, max: 5000, step: 1 },
       { key: 'outHeight',   label: 'Output Height',   unitType: 'length', type: 'number', min: 1, max: 5000, step: 1 },
     ],
   },
 
-  // ── RING MILL ─────────────────────────────────────────────────────────────
-  ring_mill: {
-    label: 'Ring Mill', color: '#0d1f10', textColor: '#80e0a0', borderColor: '#207040',
-    hasInput: true, hasOutput: true,
-    defaultParams: {
-      preformType: 'pierced_disc',
-      mandrelDiam: 100,
-      outOD: 800, outID: 600, outHeight: 150,
-      odContour: 'none', idContour: 'none',
-      rollPasses: 3,
-    },
-    paramDefs: [
-      { section: 'Preform' },
-      { key: 'preformType', label: 'Preform Type',     type: 'select', options: ['pierced_disc','pre_ring'] },
-      { key: 'mandrelDiam', label: 'Mandrel Diameter', unitType: 'length', type: 'number', min: 10, max: 2000, step: 1 },
-      { section: 'Output Dimensions' },
-      { key: 'outOD',     label: 'Ring OD',     unitType: 'length', type: 'number', min: 10,  max: 10000, step: 1 },
-      { key: 'outID',     label: 'Ring ID',     unitType: 'length', type: 'number', min: 1,   max: 9000,  step: 1 },
-      { key: 'outHeight', label: 'Ring Height', unitType: 'length', type: 'number', min: 1,   max: 5000,  step: 1 },
-      { section: 'Contour' },
-      { key: 'odContour', label: 'OD Contour', type: 'select', options: ['none','forged','machined'] },
-      { key: 'idContour', label: 'ID Contour', type: 'select', options: ['none','forged','machined'] },
-      { section: 'Process' },
-      { key: 'rollPasses', label: 'Rolling Passes', type: 'number', min: 1, max: 20, step: 1 },
-    ],
-  },
-
-  // ── TRIM FLASH ────────────────────────────────────────────────────────────
   trim: {
     label: 'Trim Flash', color: '#101828', textColor: '#90b0e0', borderColor: '#304880',
     hasInput: true, hasOutput: true,
@@ -421,144 +266,134 @@ var NODE_DEFS = {
     paramDefs: [
       { section: 'Trim Operation' },
       { key: 'trimCondition', label: 'Trim Condition', type: 'select', options: ['hot','warm','cold'] },
-      { key: 'dieType',       label: 'Trim Die Type',  type: 'select', options: ['conventional','precision'] },
+      { key: 'dieType',       label: 'Trim Die Type',  type: 'select', options: [
+        'conventional','progressive','compound','precision',
+      ]},
       { key: 'dieNumber',     label: 'Die Number',     type: 'text' },
       { section: 'Flash' },
       { key: 'flashPct',         label: 'Flash to Remove (%)', type: 'number', min: 0, max: 50, step: 0.5 },
       { key: 'flashDisposition', label: 'Flash Disposition',   type: 'select', options: [
-        'scrap_recycle','remelt','reforge',
+        'scrap_recycle','remelt','reforge','discard',
       ]},
     ],
   },
 
-  // ── HEAT TREAT ────────────────────────────────────────────────────────────
-  // Furnace (gas or electric) + water quench tank.
   heat_treat: {
     label: 'Heat Treat', color: '#140828', textColor: '#c0a0f0', borderColor: '#5838a8',
     hasInput: true, hasOutput: true,
     defaultParams: {
       process: 'normalize', specNumber: '',
-      furnaceType: 'gas',
-      targetTemp: 900, soakMin: 60,
-      quenchant: 'water', quenchAgitation: 'still',
+      furnaceType: 'electric_resistance', atmosphere: 'air',
+      austenitizeTemp: 900, soakMin: 60,
+      quenchant: 'air', quenchAgitation: 'still',
       temperTemp: 0, temperSoakMin: 0,
-      hardnessScale: 'HB', targetHardnessMin: 0, targetHardnessMax: 0,
+      hardnessScale: 'HRC', targetHardnessMin: 0, targetHardnessMax: 0,
+      caseDepth: 0,
     },
     paramDefs: [
       { section: 'Process' },
       { key: 'process',    label: 'Process Type', type: 'select', options: [
-        'normalize','anneal','stress_relief','quench_temper',
-      ], refreshPanel: true },
-      { key: 'specNumber', label: 'Spec / Standard #', type: 'text' },
+        'normalize','anneal','stress_relief',
+        'quench_temper','martempering','austempering',
+        'case_harden','carbonitriding','nitriding',
+        'solution_anneal','precipitation_harden','cryogenic',
+      ]},
+      { key: 'specNumber', label: 'Spec / AMS #', type: 'text' },
       { section: 'Furnace' },
-      { key: 'furnaceType', label: 'Furnace Type', type: 'select', options: ['gas','electric'] },
-      { section: 'Heat' },
-      { key: 'targetTemp', label: 'Heat Temp',  unitType: 'temp', type: 'number', min: 100, max: 1300, step: 10 },
-      { key: 'soakMin',    label: 'Soak (min)',                   type: 'number', min: 1,   max: 2400, step: 5  },
-      { section: 'Quench', showWhen: function(p) { return p.process === 'quench_temper'; } },
-      { key: 'quenchant',       label: 'Quench Medium', type: 'select', options: ['air','water','none'] },
-      { key: 'quenchAgitation', label: 'Agitation',     type: 'select', options: ['still','agitated'] },
-      { section: 'Temper', showWhen: function(p) { return p.process === 'quench_temper'; } },
-      { key: 'temperTemp',    label: 'Temper Temp',    unitType: 'temp', type: 'number', min: 0, max: 800, step: 10 },
-      { key: 'temperSoakMin', label: 'Temper Soak (min)',                type: 'number', min: 0, max: 2400, step: 5 },
+      { key: 'furnaceType', label: 'Furnace Type', type: 'select', options: [
+        'electric_resistance','gas_fired','vacuum','salt_bath','fluid_bed','induction','car_bottom',
+      ]},
+      { key: 'atmosphere',  label: 'Atmosphere',  type: 'select', options: [
+        'air','nitrogen','endothermic','vacuum','argon','salt','controlled_carbon',
+      ]},
+      { section: 'Austenitize / Heat' },
+      { key: 'austenitizeTemp', label: 'Heat Temp',    unitType: 'temp', type: 'number', min: 100, max: 1300, step: 10 },
+      { key: 'soakMin',         label: 'Soak (min)',                     type: 'number', min: 1,   max: 2400, step: 5  },
+      { section: 'Quench' },
+      { key: 'quenchant',       label: 'Quench Medium',    type: 'select', options: [
+        'air','oil','water','polymer','salt','press_quench','none',
+      ]},
+      { key: 'quenchAgitation', label: 'Quench Agitation', type: 'select', options: [
+        'still','mild','moderate','vigorous','spray',
+      ]},
+      { section: 'Temper' },
+      { key: 'temperTemp',    label: 'Temper Temp',  unitType: 'temp', type: 'number', min: 0, max: 750, step: 10 },
+      { key: 'temperSoakMin', label: 'Temper Soak (min)',               type: 'number', min: 0, max: 600, step: 5  },
       { section: 'Target Properties' },
-      { key: 'hardnessScale',     label: 'Hardness Scale', type: 'select', options: ['HB','HRC','HRB','HV'] },
-      { key: 'targetHardnessMin', label: 'Min Hardness',  type: 'number', min: 0, max: 999, step: 1 },
-      { key: 'targetHardnessMax', label: 'Max Hardness',  type: 'number', min: 0, max: 999, step: 1 },
+      { key: 'hardnessScale',     label: 'Hardness Scale', type: 'select', options: ['HRC','HRB','HB','HV','HRA'] },
+      { key: 'targetHardnessMin', label: 'Min Hardness',  type: 'number', min: 0, max: 1000, step: 1 },
+      { key: 'targetHardnessMax', label: 'Max Hardness',  type: 'number', min: 0, max: 1000, step: 1 },
+      { key: 'caseDepth',         label: 'Case Depth',    unitType: 'length', type: 'number', min: 0, max: 10, step: 0.05 },
     ],
   },
 
-  // ── MACHINE ───────────────────────────────────────────────────────────────
-  // Covers: lathe, vertical mill, boullard, drill press, saw, sander, grinder.
   machine: {
     label: 'Machine', color: '#081a14', textColor: '#70e0c0', borderColor: '#187050',
     hasInput: true, hasOutput: true,
     defaultParams: {
-      equipment: 'lathe',
-      operation: 'turn',
-      numSetups: 1,
+      operation: 'turn', machineType: 'cnc_lathe', numSetups: 1, coolant: 'flood',
       programNumber: '', setupNumber: '',
-      stockPerSurface: 3, outDiameter: 100, outHeight: 150,
+      stockPerSurface: 3, outDiameter: 94, outHeight: 144,
       surfaceFinish: '125', toleranceClass: 'IT7',
     },
     paramDefs: [
-      { section: 'Equipment' },
-      { key: 'equipment', label: 'Equipment', type: 'select', options: [
-        'lathe','vertical_mill','boullard','drill_press','saw','sander','grinder',
-      ], refreshPanel: true },
-      { key: 'operation', label: 'Primary Operation', type: 'select',
-        optionsFor: function(p) {
-          var map = {
-            lathe:         ['turn','face','bore','thread'],
-            vertical_mill: ['mill','face','drill','profile'],
-            boullard:      ['mill','profile','face'],
-            drill_press:   ['drill'],
-            saw:           ['cut'],
-            sander:        ['sand'],
-            grinder:       ['grind'],
-          };
-          return map[p.equipment] || ['turn','face','bore','mill','drill','grind','cut','sand','profile'];
-        },
-      },
-      { key: 'numSetups', label: 'Number of Setups', type: 'number', min: 1, max: 20, step: 1 },
-      { section: 'Reference' },
-      { key: 'programNumber', label: 'Program / Ref #', type: 'text' },
-      { key: 'setupNumber',   label: 'Setup Sheet #',   type: 'text' },
+      { section: 'Operation' },
+      { key: 'operation',   label: 'Primary Operation', type: 'select', options: [
+        'turn','mill','grind','drill','bore','thread','broach','hob','ream',
+      ]},
+      { key: 'machineType', label: 'Machine Type',      type: 'select', options: [
+        'cnc_lathe','cnc_mill','cnc_grinder','multi_axis','manual_lathe','manual_mill','transfer_line','edm',
+      ]},
+      { key: 'numSetups',   label: 'Number of Setups',  type: 'number', min: 1, max: 20, step: 1 },
+      { key: 'coolant',     label: 'Coolant',           type: 'select', options: [
+        'flood','mist','dry','through_tool','air_blast','cryogenic',
+      ]},
+      { section: 'Programs & Fixtures' },
+      { key: 'programNumber', label: 'CNC Program #', type: 'text' },
+      { key: 'setupNumber',   label: 'Setup Sheet #',  type: 'text' },
       { section: 'Output Dimensions' },
-      { key: 'stockPerSurface', label: 'Stock / Surface', unitType: 'length', type: 'number', min: 0, max: 25,   step: 0.5 },
-      { key: 'outDiameter',     label: 'Final OD',        unitType: 'length', type: 'number', min: 1, max: 5000, step: 1   },
-      { key: 'outHeight',       label: 'Final Height',    unitType: 'length', type: 'number', min: 1, max: 5000, step: 1   },
+      { key: 'stockPerSurface', label: 'Stock / Surface', unitType: 'length', type: 'number', min: 0,  max: 25,   step: 0.5 },
+      { key: 'outDiameter',     label: 'Final OD',        unitType: 'length', type: 'number', min: 1,  max: 5000, step: 1   },
+      { key: 'outHeight',       label: 'Final Height',    unitType: 'length', type: 'number', min: 1,  max: 5000, step: 1   },
       { section: 'Quality' },
       { key: 'surfaceFinish',  label: 'Surface Finish (Ra μin)', type: 'select', options: ['16','32','63','125','250','500'] },
-      { key: 'toleranceClass', label: 'Tolerance Class',         type: 'select', options: ['IT5','IT6','IT7','IT8','IT9','IT10','IT11'] },
+      { key: 'toleranceClass', label: 'Tolerance Class',         type: 'select', options: ['IT4','IT5','IT6','IT7','IT8','IT9','IT10','IT11'] },
     ],
   },
 
-  // ── WELD ──────────────────────────────────────────────────────────────────
-  // Arc or MIG, shielding gas: argon or 730.
-  weld: {
-    label: 'Weld', color: '#1a1000', textColor: '#ffd060', borderColor: '#806010',
-    hasInput: true, hasOutput: true,
-    defaultParams: {
-      process: 'arc', shieldingGas: 'argon',
-      filler: '', passes: 1, pwht: 'none', notes: '',
-    },
-    paramDefs: [
-      { section: 'Process' },
-      { key: 'process',      label: 'Weld Process',    type: 'select', options: ['arc','mig'] },
-      { key: 'shieldingGas', label: 'Shielding Gas',   type: 'select', options: ['argon','730','none'] },
-      { key: 'filler',       label: 'Filler / Rod #',  type: 'text' },
-      { key: 'passes',       label: 'Number of Passes',type: 'number', min: 1, max: 100, step: 1 },
-      { section: 'Post-Weld' },
-      { key: 'pwht',  label: 'Post-Weld HT', type: 'select', options: ['none','stress_relief'] },
-      { key: 'notes', label: 'Notes',         type: 'text' },
-    ],
-  },
-
-  // ── INSPECT ───────────────────────────────────────────────────────────────
-  // Equipment: Brinell hardness tester, tape/CMM for dimensional, multiped temp recorder.
   inspect: {
     label: 'Inspect', color: '#081a0a', textColor: '#80e090', borderColor: '#188030',
     hasInput: true, hasOutput: true,
     defaultParams: {
-      method: 'dimensional', specNumber: '',
-      checkDimensional: 'yes', checkHardness: 'no', checkTemp: 'no',
-      samplingPlan: '100_percent',
+      method: 'dimensional', standard: 'customer_dwg', specNumber: '',
+      samplingPlan: '100_percent', aqlLevel: '1.0',
+      checkDimensional: 'yes', checkHardness: 'no',
+      checkNdt: 'no', ndtMethod: 'none',
       result: 'pending',
     },
     paramDefs: [
-      { section: 'Inspection' },
-      { key: 'method', label: 'Primary Method', type: 'select', options: [
-        'dimensional','hardness_brinell','temperature','visual','combined',
+      { section: 'Inspection Type' },
+      { key: 'method',    label: 'Primary Method', type: 'select', options: [
+        'visual','dimensional','cmm','hardness',
+        'ultrasonic','magnetic_particle','dye_penetrant','x_ray','eddy_current',
+      ]},
+      { key: 'standard',   label: 'Standard',     type: 'select', options: [
+        'customer_dwg','ASTM','AMS','MIL_SPEC','ISO','NADCAP','in_house',
       ]},
       { key: 'specNumber', label: 'Spec / Dwg #', type: 'text' },
-      { section: 'Required Checks' },
-      { key: 'checkDimensional', label: 'Dimensional',        type: 'select', options: ['yes','no'] },
-      { key: 'checkHardness',    label: 'Brinell Hardness',   type: 'select', options: ['yes','no'] },
-      { key: 'checkTemp',        label: 'Temperature Record', type: 'select', options: ['yes','no'] },
       { section: 'Sampling' },
       { key: 'samplingPlan', label: 'Sampling Plan', type: 'select', options: [
-        '100_percent','first_article','AQL','statistical',
+        '100_percent','first_article_only','AQL','skip_lot','statistical',
+      ]},
+      { key: 'aqlLevel', label: 'AQL Level', type: 'select', options: [
+        '0.065','0.10','0.25','0.65','1.0','1.5','2.5','4.0',
+      ]},
+      { section: 'Required Checks' },
+      { key: 'checkDimensional', label: 'Dimensional', type: 'select', options: ['yes','no'] },
+      { key: 'checkHardness',    label: 'Hardness',    type: 'select', options: ['yes','no'] },
+      { key: 'checkNdt',         label: 'NDT',         type: 'select', options: ['yes','no'] },
+      { key: 'ndtMethod',        label: 'NDT Method',  type: 'select', options: [
+        'none','ultrasonic','magnetic_particle','dye_penetrant','x_ray','eddy_current',
       ]},
       { section: 'Disposition' },
       { key: 'result', label: 'Result / Status', type: 'select', options: [
@@ -567,70 +402,37 @@ var NODE_DEFS = {
     ],
   },
 
-  // ── STOCK OUT ─────────────────────────────────────────────────────────────
-  // This forge sells: bars (round/rect/hex, optionally stepped), discs, rings, mushrooms.
   stock_out: {
     label: 'Stock Out', color: '#001828', textColor: '#80d0f0', borderColor: '#0070a0',
     hasInput: true, hasOutput: false,
     defaultParams: {
-      productType: 'bar',           // bar | disc | ring | mushroom
-      // Bar
-      barShape: 'round',            // round | rectangular | hexagonal
-      isStepped: 'no',
-      numSteps: 1,
-      barDiameter: 100, barAcrossFlats: 100, barWidth: 100, barThickness: 50, barLength: 500,
-      // Disc
-      discOD: 300, discThickness: 80,
-      // Ring
-      ringOD: 400, ringID: 200, ringHeight: 100,
-      odContour: 'none', idContour: 'none',
-      // Mushroom
-      flangeDiam: 300, stemDiam: 100, totalHeight: 200,
-      // Identification & shipping
       partNumber: '', partRevision: '', workOrderNumber: '',
-      customerName: '', shippingMethod: 'ground',
+      destination: 'customer', customerName: '', shippingMethod: 'ground',
+      packagingType: 'standard_crate', cleaningReq: 'clean_and_oil', preservative: 'none',
       certRequired: 'yes', certType: 'C_of_C',
     },
     paramDefs: [
-      { section: 'Product' },
-      { key: 'productType', label: 'Product Type', type: 'select', options: [
-        'bar','disc','ring','mushroom',
-      ], refreshPanel: true },
-      { section: 'Bar', showWhen: function(p) { return p.productType === 'bar'; } },
-      { key: 'barShape',  label: 'Bar Shape',       type: 'select', options: ['round','rectangular','hexagonal'], refreshPanel: true },
-      { key: 'isStepped', label: 'Stepped Bar',     type: 'select', options: ['no','yes'], refreshPanel: true },
-      { key: 'numSteps',  label: 'Number of Steps', type: 'number', min: 1, max: 12, step: 1,
-        showWhen: function(p) { return p.isStepped === 'yes'; } },
-      { key: 'barDiameter',    label: 'Round OD',         unitType: 'length', type: 'number', min: 1, max: 5000,  step: 1,
-        showWhen: function(p) { return p.barShape === 'round'; } },
-      { key: 'barAcrossFlats', label: 'Hex Across Flats', unitType: 'length', type: 'number', min: 1, max: 5000,  step: 1,
-        showWhen: function(p) { return p.barShape === 'hexagonal'; } },
-      { key: 'barWidth',       label: 'Rect Width',       unitType: 'length', type: 'number', min: 1, max: 5000,  step: 1,
-        showWhen: function(p) { return p.barShape === 'rectangular'; } },
-      { key: 'barThickness',   label: 'Rect Thickness',   unitType: 'length', type: 'number', min: 1, max: 5000,  step: 1,
-        showWhen: function(p) { return p.barShape === 'rectangular'; } },
-      { key: 'barLength',      label: 'Length',            unitType: 'length', type: 'number', min: 1, max: 20000, step: 1 },
-      { section: 'Disc', showWhen: function(p) { return p.productType === 'disc'; } },
-      { key: 'discOD',        label: 'Disc OD',        unitType: 'length', type: 'number', min: 1, max: 10000, step: 1 },
-      { key: 'discThickness', label: 'Disc Thickness', unitType: 'length', type: 'number', min: 1, max: 5000,  step: 1 },
-      { section: 'Ring', showWhen: function(p) { return p.productType === 'ring'; } },
-      { key: 'ringOD',     label: 'Ring OD',    unitType: 'length', type: 'number', min: 1,  max: 10000, step: 1 },
-      { key: 'ringID',     label: 'Ring ID',    unitType: 'length', type: 'number', min: 1,  max: 9000,  step: 1 },
-      { key: 'ringHeight', label: 'Ring Height',unitType: 'length', type: 'number', min: 1,  max: 5000,  step: 1 },
-      { key: 'odContour',  label: 'OD Contour', type: 'select', options: ['none','forged','machined'] },
-      { key: 'idContour',  label: 'ID Contour', type: 'select', options: ['none','forged','machined'] },
-      { section: 'Mushroom', showWhen: function(p) { return p.productType === 'mushroom'; } },
-      { key: 'flangeDiam',  label: 'Flange Diameter', unitType: 'length', type: 'number', min: 1, max: 10000, step: 1 },
-      { key: 'stemDiam',    label: 'Stem Diameter',   unitType: 'length', type: 'number', min: 1, max: 5000,  step: 1 },
-      { key: 'totalHeight', label: 'Total Height',    unitType: 'length', type: 'number', min: 1, max: 5000,  step: 1 },
       { section: 'Identification' },
       { key: 'partNumber',      label: 'Part Number',  type: 'text' },
       { key: 'partRevision',    label: 'Revision',     type: 'text' },
       { key: 'workOrderNumber', label: 'Work Order #', type: 'text' },
-      { section: 'Shipping' },
-      { key: 'customerName',   label: 'Customer',        type: 'text' },
-      { key: 'shippingMethod', label: 'Shipping Method', type: 'select', options: [
+      { section: 'Destination' },
+      { key: 'destination',    label: 'Destination',    type: 'select', options: [
+        'customer','warehouse','next_operation','subcontractor','inspection_hold',
+      ]},
+      { key: 'customerName',   label: 'Customer / Dest.', type: 'text' },
+      { key: 'shippingMethod', label: 'Shipping Method',  type: 'select', options: [
         'ground','air_freight','ocean_freight','will_call','internal_transfer',
+      ]},
+      { section: 'Packaging & Preservation' },
+      { key: 'packagingType', label: 'Packaging',    type: 'select', options: [
+        'standard_crate','custom_crate','bulk_bin','individual_bag','vacuum_sealed','returnable_rack',
+      ]},
+      { key: 'cleaningReq',   label: 'Cleaning',     type: 'select', options: [
+        'as_is','clean_and_oil','degrease','passivate','clean_only',
+      ]},
+      { key: 'preservative',  label: 'Preservative', type: 'select', options: [
+        'none','rust_preventive_oil','VCI_paper','desiccant','wax',
       ]},
       { section: 'Certification' },
       { key: 'certRequired', label: 'Cert Required', type: 'select', options: ['yes','no'] },
@@ -701,143 +503,92 @@ function computeStep(node, massIn, dimsIn) {
   switch (node.type) {
 
     case 'stock_in': {
-      var dens = p.density || general.density;
-      // Volume depends on cross-section geometry
-      var vol_mm3;
-      var geom = p.geometry || 'round_cylinder';
-      if (geom === 'rectangular_prism') {
-        vol_mm3 = (p.width || 0) * (p.sectionHeight || 0) * (p.length || 0);
-      } else if (geom === 'round_corner_square') {
-        // True RCS area = S² − (4−π)×R²
-        var S = p.side || 0; var Rc = p.cornerRadius || 0;
-        var A_rcs = Math.max(0, S * S - (4 - Math.PI) * Rc * Rc);
-        vol_mm3 = A_rcs * (p.length || 0);
-      } else {
-        // round_cylinder (default)
-        vol_mm3 = Math.PI * Math.pow((p.diameter || 0) / 2, 2) * (p.length || 0);
-      }
-      var massPerPc = round3(vol_mm3 / 1e6 * dens);
-      var totalMass = round3(massPerPc * (p.quantity || 1));
+      var dens       = p.density || general.density;
+      var vol_mm3    = Math.PI * Math.pow(p.diameter / 2, 2) * p.length;
+      var massPerBar = round3(vol_mm3 / 1e6 * dens);
+      var totalMass  = round3(massPerBar * p.quantity);
       step.massIn  = 0;
       step.massOut = totalMass;
-      step.dimsOut = { diameter: p.diameter || p.side || p.width, height: p.sectionHeight, length: p.length, geometry: geom };
+      step.dimsOut = { diameter: p.diameter, length: p.length, geometry: p.geometry };
       step.calcs   = [
-        { label: 'Stock type',   result: (p.stockType||'billet') },
-        { label: 'Material',     result: (p.grade||'—') + '  (' + (p.condition||'').replace(/_/g,' ') + ')' },
-        { label: 'Family',       result: (MATERIAL_CATALOG[p.materialFamily]||{}).label || (p.materialFamily||'—') },
-        { label: 'PO / Heat',    result: [(p.poNumber||'—'), (p.heatNumber||'—')].join('  /  ') },
-        { label: 'Cross-section',result: geom.replace(/_/g,' ') },
-        { label: 'Volume / pc',  result: dVol(vol_mm3) },
-        { label: 'Mass / pc',    result: dMass(massPerPc) },
-        { label: 'Total mass',   result: dMass(totalMass) + '  (' + (p.quantity||1) + ' pc' + ((p.quantity||1) > 1 ? 's' : '') + ')' },
+        { label: 'Material',      result: (p.material || '—') + '  (' + (p.condition || '').replace(/_/g,' ') + ')' },
+        { label: 'Form',          result: (p.geometry || '—').replace(/_/g,' ') + (p.mfgMethod ? '  ·  ' + p.mfgMethod.replace(/_/g,' ') : '') },
+        { label: 'PO / Heat',     result: [(p.poNumber||'—'), (p.heatNumber||'—')].join('  /  ') },
+        { label: 'Volume / bar',  result: dVol(vol_mm3) },
+        { label: 'Mass / bar',    result: dMass(massPerBar) },
+        { label: 'Total mass',    result: dMass(totalMass) + '  (' + p.quantity + ' pc' + (p.quantity > 1 ? 's' : '') + ')' },
       ];
       break;
     }
 
     case 'cut': {
-      // Work out the incoming cross-section area from dimsIn
-      var geomC = dimsIn.geometry || 'round_cylinder';
-      var Ac;
-      if (geomC === 'rectangular_prism') {
-        Ac = (dimsIn.width || 0) * (dimsIn.height || 0);
-      } else if (geomC === 'round_corner_square') {
-        var Sc = dimsIn.diameter || 0; var Rcc = 0;
-        Ac = Math.max(0, Sc * Sc - (4 - Math.PI) * Rcc * Rcc);
-      } else {
-        var Dc = dimsIn.diameter || 0;
-        Ac = Math.PI * Math.pow(Dc / 2, 2);
-      }
-      var densC   = general.density;
-      var cropH   = p.cropBothEnds === 'yes' ? (p.cropHeadMm || 0) : 0;
-      var cropT   = p.cropBothEnds === 'yes' ? (p.cropTailMm || 0) : 0;
-      var cropTot = cropH + cropT;
-      // mass lost to crop ends + kerf(s)
-      var kerf    = p.kerfMm || 0;
-      var numCuts = (p.numPieces || 1) + (p.cropBothEnds === 'yes' ? 1 : 0); // cuts = pieces + 1 crop cut
-      var kerfLoss= round3(Ac * kerf * numCuts / 1e6 * densC);
-      var cropLoss= round3(Ac * cropTot / 1e6 * densC);
-      var totalLossC = round3(kerfLoss + cropLoss);
-      step.massOut  = round3(Math.max(0, massIn - totalLossC));
-      step.massLoss = totalLossC;
-      step.dimsOut  = Object.assign({}, dimsIn, { length: p.targetLength || dimsIn.length });
-      step.calcs    = [
-        { label: 'Purpose',      result: (p.purpose||'cut_to_length').replace(/_/g,' ') },
-        { label: 'Saw / Blade',  result: (p.sawType||'band_saw').replace(/_/g,' ') + '  ·  ' + (p.bladeType||'bi_metal').replace(/_/g,' ') },
-        { label: 'Crop (H + T)', result: dLen(cropH) + ' + ' + dLen(cropT) + '  =  ' + dLen(cropTot) },
-        { label: 'Kerf × cuts',  result: dLen(kerf) + ' × ' + numCuts + ' cuts' },
-        { label: 'Crop loss',    result: dMass(cropLoss) },
-        { label: 'Kerf loss',    result: dMass(kerfLoss) },
-        { label: 'Mass out',     result: dMass(step.massOut) },
+      var diam        = dimsIn.diameter || p.diameter || 150;
+      var barLen      = dimsIn.length   || 3000;
+      var usable      = barLen - p.cropLossMm;
+      var blanksPerBar= Math.max(0, Math.floor(usable / (p.targetLength + p.kerfMm)));
+      var blankVol    = Math.PI * Math.pow(diam / 2, 2) * p.targetLength;
+      var blankMass   = round3(blankVol / 1e6 * general.density);
+      var massOut     = round3(blankMass * blanksPerBar);
+      step.massOut    = massOut;
+      step.massLoss   = round3(Math.max(0, massIn - massOut));
+      step.dimsOut    = { diameter: diam, length: p.targetLength };
+      step.calcs      = [
+        { label: 'Method',         result: (p.method||'saw').replace(/_/g,' ') + (p.bladeType && p.bladeType !== 'not_applicable' ? '  ·  ' + p.bladeType.replace(/_/g,' ') : '') },
+        { label: 'Usable length',  result: dLen(usable) + '  (crop ' + dLen(p.cropLossMm) + ')' },
+        { label: 'Blanks / bar',   result: blanksPerBar + '  (kerf ' + dLen(p.kerfMm) + ')' },
+        { label: 'Mass / blank',   result: dMass(blankMass) },
+        { label: 'Total out',      result: dMass(massOut) },
+        { label: 'Cut loss',       result: dMass(step.massLoss) },
       ];
       break;
     }
 
-
     case 'heat': {
-      var scaleLoss = round3(massIn * ((p.scaleLossPct||0) / 100));
-      step.massOut  = round3(massIn - scaleLoss);
-      step.massLoss = scaleLoss;
-      step.dimsOut  = Object.assign({}, dimsIn);
-      step.calcs    = [
-        { label: 'Furnace',     result: (p.furnaceType||'gas') + '  ·  ' + (p.atmosphere||'air') },
-        { label: 'Loading',     result: (p.loadMethod||'batch').replace(/_/g,' ') + (p.furnaceId ? '  #' + p.furnaceId : '') },
-        { label: 'Target temp', result: dTemp(p.targetTemp) + '  (min: ' + dTemp(p.minTemp) + ')' },
-        { label: 'Soak',        result: (p.soakMin||0) + ' min' },
-        { label: 'Scale loss',  result: dMass(scaleLoss) + '  (' + (p.scaleLossPct||0) + '%)' },
-        { label: 'Mass out',    result: dMass(step.massOut) },
+      var scaleLoss  = round3(massIn * (p.scaleLossPct / 100));
+      step.massOut   = round3(massIn - scaleLoss);
+      step.massLoss  = scaleLoss;
+      step.dimsOut   = Object.assign({}, dimsIn);
+      step.calcs     = [
+        { label: 'Furnace',      result: (p.furnaceType||'').replace(/_/g,' ') + '  ·  ' + (p.atmosphere||'air') },
+        { label: 'Loading',      result: (p.loadMethod||'batch').replace(/_/g,' ') },
+        { label: 'Target temp',  result: dTemp(p.targetTemp) + '  (min: ' + dTemp(p.minTemp) + ')' },
+        { label: 'Soak',         result: p.soakMin + ' min' },
+        { label: 'Scale loss',   result: dMass(scaleLoss) + '  (' + p.scaleLossPct + '%)' },
+        { label: 'Mass out',     result: dMass(step.massOut) },
       ];
       break;
     }
 
     case 'forge': {
-      var h0f = dimsIn.length || dimsIn.height || 0;
-      var h1f = p.outHeight || 0;
-      var epsF = (h0f > 0 && h1f > 0) ? round3(Math.log(h0f / h1f)) : null;
-      var pctF = (h0f > 0 && h1f > 0) ? round3((h0f - h1f) / h0f * 100) : null;
-      var flashLoss = round3(massIn * ((p.flashPct||0) / 100));
+      var h0  = dimsIn.length || dimsIn.height || 0;
+      var h1  = p.outHeight;
+      var eps = (h0 > 0 && h1 > 0) ? round3(Math.log(h0 / h1)) : null;
+      var pct = (h0 > 0) ? round3((h0 - h1) / h0 * 100) : null;
+      var flashLoss = round3(massIn * (p.flashPct / 100));
       step.massOut  = round3(massIn - flashLoss);
       step.massLoss = flashLoss;
       step.dimsOut  = { diameter: p.outDiameter, height: p.outHeight };
       step.calcs    = [
-        { label: 'Equipment',     result: (p.equipment||'press') + '  ·  ' + (p.process||'open_die').replace(/_/g,' ') },
-        { label: 'Tonnage / Hits',result: (p.pressTonnage||'—') + ' ton  ×  ' + (p.numHits||1) + ' hit' + ((p.numHits||1) > 1 ? 's' : '') },
-        { label: 'Die / Lube',   result: (p.dieNumber ? '#' + p.dieNumber + '  ·  ' : '') + dTemp(p.dieTemp||200) + '  ·  ' + (p.lubricant||'graphite').replace(/_/g,' ') },
-        { label: 'Flash loss',   result: dMass(flashLoss) + '  (' + (p.flashPct||0) + '%)' },
-        { label: 'Mass out',     result: dMass(step.massOut) },
-        { label: 'Forge ratio R',result: (p.forgeRatio||0) + ' : 1' + ((p.forgeRatio||0) >= 3 ? '  ✓' : '  ⚠') },
-        { label: 'True strain ε',result: epsF !== null ? '' + epsF : '—' },
-        { label: '% Height red.',result: pctF !== null ? pctF + '%' : '—' },
-      ];
-      break;
-    }
-
-    case 'ring_mill': {
-      var odR = p.outOD || 0; var idR = p.outID || 0; var htR = p.outHeight || 0;
-      var volRing = Math.max(0, Math.PI / 4 * (odR * odR - idR * idR) * htR);
-      var massRing = round3(volRing / 1e6 * general.density);
-      step.massOut  = massRing;
-      step.massLoss = round3(Math.max(0, massIn - massRing));
-      step.dimsOut  = { od: odR, id: idR, height: htR, diameter: odR };
-      step.calcs    = [
-        { label: 'Preform',       result: (p.preformType||'pierced_disc').replace(/_/g,' ') + '  ·  mandrel Ø ' + dLen(p.mandrelDiam||0) },
-        { label: 'Ring OD / ID',  result: dLen(odR) + ' OD  ×  ' + dLen(idR) + ' ID' },
-        { label: 'Ring height',   result: dLen(htR) },
-        { label: 'OD / ID contour',result: (p.odContour||'none') + '  /  ' + (p.idContour||'none') },
-        { label: 'Rolling passes',result: (p.rollPasses||1) + ' passes' },
-        { label: 'Ring volume',   result: dVol(volRing) },
-        { label: 'Mass out',      result: dMass(massRing) },
+        { label: 'Process',       result: (p.process||'').replace(/_/g,' ') + '  ·  ' + (p.equipment||'').replace(/_/g,' ') },
+        { label: 'Press / Hits',  result: (p.pressTonnage||'—') + ' ton  ×  ' + (p.numHits||1) + ' hit' + ((p.numHits||1) > 1 ? 's' : '') },
+        { label: 'Die temp',      result: dTemp(p.dieTemp||200) + '  ·  ' + (p.lubricant||'graphite').replace(/_/g,' ') },
+        { label: 'Flash loss',    result: dMass(flashLoss) + '  (' + p.flashPct + '%)' },
+        { label: 'Mass out',      result: dMass(step.massOut) },
+        { label: 'Forge ratio R', result: p.forgeRatio + ' : 1' + (p.forgeRatio >= 3 ? '  ✓' : '  ⚠') },
+        { label: 'True strain ε', result: eps !== null ? '' + eps : '—' },
+        { label: '% Height red.', result: pct !== null ? pct + '%' : '—' },
       ];
       break;
     }
 
     case 'trim': {
-      var trimLoss = round3(massIn * ((p.flashPct||0) / 100));
+      var trimLoss  = round3(massIn * (p.flashPct / 100));
       step.massOut  = round3(massIn - trimLoss);
       step.massLoss = trimLoss;
       step.dimsOut  = Object.assign({}, dimsIn);
       step.calcs    = [
         { label: 'Condition',     result: (p.trimCondition||'hot') + '  ·  ' + (p.dieType||'conventional').replace(/_/g,' ') + ' die' },
-        { label: 'Flash removed', result: dMass(trimLoss) + '  (' + (p.flashPct||0) + '%)' },
+        { label: 'Flash removed', result: dMass(trimLoss) + '  (' + p.flashPct + '%)' },
         { label: 'Disposition',   result: (p.flashDisposition||'scrap_recycle').replace(/_/g,' ') },
         { label: 'Mass out',      result: dMass(step.massOut) },
       ];
@@ -849,51 +600,39 @@ function computeStep(node, massIn, dimsIn) {
       step.massLoss = 0;
       step.dimsOut  = Object.assign({}, dimsIn);
       var htHardness = (p.targetHardnessMin > 0 || p.targetHardnessMax > 0)
-        ? p.targetHardnessMin + '–' + p.targetHardnessMax + ' ' + (p.hardnessScale||'HB')
+        ? p.targetHardnessMin + '–' + p.targetHardnessMax + ' ' + p.hardnessScale
         : '—';
       step.calcs    = [
-        { label: 'Process',   result: (p.process||'normalize').replace(/_/g,' ') + (p.specNumber ? '  ·  ' + p.specNumber : '') },
-        { label: 'Furnace',   result: (p.furnaceType||'gas') + '  ·  heat ' + dTemp(p.targetTemp||0) + '  ·  ' + (p.soakMin||60) + ' min' },
-        { label: 'Quench',    result: (p.quenchant||'water') + '  (' + (p.quenchAgitation||'still') + ')' },
-        { label: 'Temper',    result: (p.temperTemp||0) > 0 ? dTemp(p.temperTemp) + '  ·  ' + (p.temperSoakMin||0) + ' min' : 'none' },
-        { label: 'Target HRD',result: htHardness },
-        { label: 'Mass',      result: dMass(massIn) + '  (no loss)' },
+        { label: 'Process',    result: (p.process||'').replace(/_/g,' ') + (p.specNumber ? '  ·  ' + p.specNumber : '') },
+        { label: 'Furnace',    result: (p.furnaceType||'').replace(/_/g,' ') + '  ·  ' + (p.atmosphere||'air') },
+        { label: 'Heat temp',  result: dTemp(p.austenitizeTemp) + '  ·  ' + (p.soakMin||60) + ' min' },
+        { label: 'Quench',     result: (p.quenchant||'air') + '  (' + (p.quenchAgitation||'still') + ')' },
+        { label: 'Temper',     result: p.temperTemp > 0 ? dTemp(p.temperTemp) + '  ·  ' + (p.temperSoakMin||0) + ' min' : 'none' },
+        { label: 'Target HRD', result: htHardness },
+        { label: 'Case depth', result: p.caseDepth > 0 ? dLen(p.caseDepth) : '—' },
+        { label: 'Mass',       result: dMass(massIn) + '  (no loss)' },
       ];
       break;
     }
 
     case 'machine': {
-      var dInM  = dimsIn.diameter || dimsIn.od || 100;
-      var hInM  = dimsIn.height   || 150;
-      var volIn  = Math.PI * Math.pow(dInM / 2, 2) * hInM;
-      var volOut = Math.PI * Math.pow((p.outDiameter||dInM) / 2, 2) * (p.outHeight||hInM);
+      var dIn  = dimsIn.diameter || dimsIn.outDiameter || 100;
+      var hIn  = dimsIn.height || dimsIn.outHeight || 150;
+      var volIn  = Math.PI * Math.pow(dIn  / 2, 2) * hIn;
+      var volOut = Math.PI * Math.pow(p.outDiameter / 2, 2) * p.outHeight;
       var chipMass = round3(Math.max(0, (volIn - volOut) / 1e6 * general.density));
       step.massOut  = round3(Math.max(0, massIn - chipMass));
       step.massLoss = chipMass;
       step.dimsOut  = { diameter: p.outDiameter, height: p.outHeight };
       step.calcs    = [
-        { label: 'Equipment',    result: (p.equipment||'lathe').replace(/_/g,' ') + '  ·  ' + (p.operation||'turn') },
+        { label: 'Operation',    result: (p.operation||'turn') + '  ·  ' + (p.machineType||'').replace(/_/g,' ') },
         { label: 'Setups',       result: (p.numSetups||1) + ' setup' + ((p.numSetups||1) > 1 ? 's' : '') },
-        { label: 'Stock/surface',result: dLen(p.stockPerSurface||0) },
-        { label: 'Final OD',     result: dLen(p.outDiameter||0) },
-        { label: 'Final H',      result: dLen(p.outHeight||0) },
-        { label: 'Finish / Tol', result: (p.surfaceFinish||'125') + ' Ra  ·  ' + (p.toleranceClass||'IT7') },
+        { label: 'Stock/surface',result: dLen(p.stockPerSurface) },
+        { label: 'Final OD',     result: dLen(p.outDiameter) },
+        { label: 'Final H',      result: dLen(p.outHeight) },
+        { label: 'Finish / Tol', result: p.surfaceFinish + ' Ra  ·  ' + (p.toleranceClass||'IT7') },
         { label: 'Chip loss',    result: dMass(chipMass) },
         { label: 'Mass out',     result: dMass(step.massOut) },
-      ];
-      break;
-    }
-
-    case 'weld': {
-      step.massOut  = massIn;
-      step.massLoss = 0;
-      step.dimsOut  = Object.assign({}, dimsIn);
-      step.calcs    = [
-        { label: 'Process',     result: (p.process||'arc') + '  ·  gas: ' + (p.shieldingGas||'argon') },
-        { label: 'Filler',      result: p.filler || '—' },
-        { label: 'Passes',      result: (p.passes||1) + ' pass' + ((p.passes||1) > 1 ? 'es' : '') },
-        { label: 'Post-weld HT',result: (p.pwht||'none').replace(/_/g,' ') },
-        { label: 'Mass',        result: dMass(massIn) + '  (pass-through)' },
       ];
       break;
     }
@@ -904,14 +643,14 @@ function computeStep(node, massIn, dimsIn) {
       step.dimsOut  = Object.assign({}, dimsIn);
       var checks = [];
       if (p.checkDimensional === 'yes') checks.push('dimensional');
-      if (p.checkHardness    === 'yes') checks.push('Brinell hardness');
-      if (p.checkTemp        === 'yes') checks.push('temperature record');
+      if (p.checkHardness    === 'yes') checks.push('hardness');
+      if (p.checkNdt         === 'yes') checks.push(p.ndtMethod || 'NDT');
       step.calcs    = [
-        { label: 'Method',   result: (p.method||'dimensional').replace(/_/g,' ') + (p.specNumber ? '  ·  ' + p.specNumber : '') },
-        { label: 'Sampling', result: (p.samplingPlan||'100_percent').replace(/_/g,' ') },
-        { label: 'Checks',   result: checks.length > 0 ? checks.join(', ') : 'per method' },
-        { label: 'Result',   result: (p.result||'pending').replace(/_/g,' ') },
-        { label: 'Mass',     result: dMass(massIn) + '  (pass-through)' },
+        { label: 'Method',    result: (p.method||'dimensional').replace(/_/g,' ') + '  ·  ' + (p.standard||'').replace(/_/g,' ') },
+        { label: 'Sampling',  result: (p.samplingPlan||'100_percent').replace(/_/g,' ') + (p.samplingPlan === 'AQL' ? '  AQL ' + p.aqlLevel : '') },
+        { label: 'Checks',    result: checks.length > 0 ? checks.join(', ') : 'see method' },
+        { label: 'Result',    result: (p.result||'pending').replace(/_/g,' ') },
+        { label: 'Mass',      result: dMass(massIn) + '  (pass-through)' },
       ];
       break;
     }
@@ -920,25 +659,13 @@ function computeStep(node, massIn, dimsIn) {
       step.massOut  = massIn;
       step.massLoss = 0;
       step.dimsOut  = Object.assign({}, dimsIn);
-      var prodType = p.productType || 'bar';
-      var prodDesc = '';
-      if (prodType === 'bar') {
-        prodDesc = (p.barShape||'round') + ' bar' + (p.isStepped === 'yes' ? '  (' + (p.numSteps||1) + '-step)' : '');
-      } else if (prodType === 'disc') {
-        prodDesc = 'disc  ' + dLen(p.discOD||0) + ' Ø × ' + dLen(p.discThickness||0);
-      } else if (prodType === 'ring') {
-        prodDesc = 'ring  OD ' + dLen(p.ringOD||0) + '  ID ' + dLen(p.ringID||0) + '  H ' + dLen(p.ringHeight||0);
-        if (p.odContour !== 'none') prodDesc += '  OD-contour: ' + p.odContour;
-        if (p.idContour !== 'none') prodDesc += '  ID-contour: ' + p.idContour;
-      } else if (prodType === 'mushroom') {
-        prodDesc = 'mushroom  flange Ø ' + dLen(p.flangeDiam||0) + '  stem Ø ' + dLen(p.stemDiam||0);
-      }
       step.calcs    = [
-        { label: 'Product',   result: prodDesc },
-        { label: 'Part',      result: (p.partNumber||'—') + (p.partRevision ? '  Rev ' + p.partRevision : '') + (p.workOrderNumber ? '  WO: ' + p.workOrderNumber : '') },
-        { label: 'Customer',  result: (p.customerName||'—') + '  ·  ' + (p.shippingMethod||'ground').replace(/_/g,' ') },
-        { label: 'Cert',      result: p.certRequired === 'yes' ? (p.certType||'C_of_C').replace(/_/g,' ') : 'none required' },
-        { label: 'Mass out',  result: dMass(massIn) },
+        { label: 'Part',         result: (p.partNumber||'—') + (p.partRevision ? '  Rev ' + p.partRevision : '') },
+        { label: 'Destination',  result: (p.destination||'customer').replace(/_/g,' ') + (p.customerName ? '  ·  ' + p.customerName : '') },
+        { label: 'Shipping',     result: (p.shippingMethod||'ground').replace(/_/g,' ') },
+        { label: 'Packaging',    result: (p.packagingType||'standard_crate').replace(/_/g,' ') },
+        { label: 'Cert',         result: p.certRequired === 'yes' ? (p.certType||'C_of_C').replace(/_/g,' ') : 'none required' },
+        { label: 'Mass out',     result: dMass(massIn) },
       ];
       break;
     }
@@ -1353,7 +1080,7 @@ function buildNodeDetail(node) {
     def.paramDefs.forEach(function(pd) {
       if (pd.section !== undefined) {
         if (currentSection.defs.length > 0) sections.push(currentSection);
-        currentSection = { title: pd.section, defs: [], showWhen: pd.showWhen };
+        currentSection = { title: pd.section, defs: [] };
       } else {
         currentSection.defs.push(pd);
       }
@@ -1361,66 +1088,12 @@ function buildNodeDetail(node) {
     if (currentSection.defs.length > 0) sections.push(currentSection);
 
     sections.forEach(function(sec) {
-      // ── Section-level conditional visibility ─────────────────────────────
-      if (sec.showWhen && !sec.showWhen(node.params)) return;
-
       var fields = sec.defs.map(function(pd) {
-        // ── Field-level conditional visibility ───────────────────────────
-        if (pd.showWhen && !pd.showWhen(node.params)) return null;
-
-        // ── Cascading material family selector ────────────────────────────
-        if (pd.type === 'material_family') {
-          var familyOptions = Object.keys(MATERIAL_CATALOG).map(function(k) {
-            return { value: k, label: MATERIAL_CATALOG[k].label };
-          });
-          return buildSelectEl(pd.label, 'mr-nd-' + pd.key,
-            familyOptions,
-            node.params.materialFamily || 'carbon_steel',
-            function(v) {
-              node.params.materialFamily = v;
-              var cat = MATERIAL_CATALOG[v];
-              if (cat) {
-                node.params.grade   = cat.grades[0];
-                node.params.density = cat.densityDefault;
-              }
-              refreshRightPanel(); refreshCalcPanel(); refreshNodeEl(node.id);
-              refreshLeftPanel();   // re-render to update grade dropdown
-            }
-          );
-        }
-
-        // ── Grade dropdown — options driven by current materialFamily ─────
-        if (pd.type === 'grade_lookup') {
-          var cat = MATERIAL_CATALOG[node.params.materialFamily] || { grades: [] };
-          var gradeOptions = cat.grades.map(function(g) { return { value: g, label: g }; });
-          return buildSelectEl(pd.label, 'mr-nd-' + pd.key,
-            gradeOptions,
-            node.params.grade || (cat.grades[0] || ''),
-            function(v) {
-              node.params.grade = v;
-              refreshRightPanel(); refreshCalcPanel(); refreshNodeEl(node.id);
-            }
-          );
-        }
-
         if (pd.type === 'select') {
-          // optionsFor allows dynamic option lists driven by other params
-          var selOpts = pd.optionsFor ? pd.optionsFor(node.params) : pd.options;
-          // If stored value is no longer valid, reset to first valid option
-          var selVal = node.params[pd.key];
-          if (selVal === undefined || selOpts.indexOf(selVal) === -1) {
-            selVal = selOpts[0];
-            node.params[pd.key] = selVal;
-          }
           return buildSelectEl(pd.label, 'mr-nd-' + pd.key,
-            selOpts.map(function(o) { return { value: o, label: o.replace(/_/g, ' ') }; }),
-            selVal,
-            function(v) {
-              node.params[pd.key] = v;
-              refreshRightPanel(); refreshCalcPanel(); refreshNodeEl(node.id);
-              // refreshPanel: true means this field controls visibility of other fields
-              if (pd.refreshPanel) refreshLeftPanel();
-            }
+            pd.options.map(function(o) { return { value: o, label: o.replace(/_/g, ' ') }; }),
+            node.params[pd.key] !== undefined ? node.params[pd.key] : '',
+            function(v) { node.params[pd.key] = v; refreshRightPanel(); refreshCalcPanel(); refreshNodeEl(node.id); }
           );
         }
         if (pd.type === 'text') {
@@ -1972,150 +1645,124 @@ function buildStepWorkings(step) {
   switch (step.nodeType) {
 
     case 'stock_in': {
-      var geomW = p.geometry || 'round_cylinder';
-      var densW = p.density || general.density;
-      var Lw    = p.length || 0;
-      var qty   = p.quantity || 1;
-      var Aw, vol_mm3w, shapeDesc, volFormula, volSubst;
-
-      if (geomW === 'rectangular_prism') {
-        var Ww = p.width || 0; var Hw = p.sectionHeight || 0;
-        Aw = Ww * Hw;
-        vol_mm3w = Aw * Lw;
-        shapeDesc = dLen(Ww) + ' W × ' + dLen(Hw) + ' H × ' + dLen(Lw) + ' L';
-        volFormula = 'V = W × H × L';
-        volSubst   = 'V = ' + dLen(Ww) + ' × ' + dLen(Hw) + ' × ' + dLen(Lw);
-      } else if (geomW === 'round_corner_square') {
-        var Sw = p.side || 0; var Rw = p.cornerRadius || 0;
-        Aw = Math.max(0, Sw * Sw - (4 - Math.PI) * Rw * Rw);
-        Aw = round3(Aw);
-        vol_mm3w = Aw * Lw;
-        shapeDesc = dLen(Sw) + ' side  ×  ' + dLen(Lw) + ' L  (R ' + dLen(Rw) + ' corners)';
-        volFormula = 'A_RCS = S² − (4−π)·R²,  V = A × L';
-        volSubst   = 'A = ' + dLen(Sw) + '² − (4−π)×' + dLen(Rw) + '² = ' + Aw + '  ·  V = A × ' + dLen(Lw);
-      } else {
-        var Dw = p.diameter || 0; var rw = Dw / 2;
-        Aw = round3(Math.PI * rw * rw);
-        vol_mm3w = round3(Math.PI * rw * rw * Lw);
-        shapeDesc = dLen(Dw) + ' Ø × ' + dLen(Lw) + ' L';
-        volFormula = 'V = π × (D ÷ 2)² × L';
-        volSubst   = 'V = π × (' + dLen(Dw) + ' ÷ 2)² × ' + dLen(Lw);
-      }
-      vol_mm3w = round3(vol_mm3w);
-      var vol_cm3w = round3(vol_mm3w / 1e6);
-      var mPc      = round3(vol_cm3w * densW);
-      var mTotW    = round3(mPc * qty);
+      var D   = p.diameter || 0;
+      var L   = p.length   || 0;
+      var qty = p.quantity  || 1;
+      var dens = p.density || general.density;
+      var r   = D / 2;
+      var A   = round3(Math.PI * r * r);
+      var vol_mm3 = round3(Math.PI * r * r * L);
+      var vol_cm3 = round3(vol_mm3 / 1e6);
+      var mBar    = round3(vol_cm3 * dens);
+      var mTotal  = round3(mBar * qty);
 
       w('Procurement',
-        'Purchase order, heat and lot numbers, supplier, and mill certification — traceability chain for the raw material.',
+        'Purchase order, heat/lot traceability, and supplier identification.',
         '—',
         'PO: ' + (p.poNumber||'—') + '  ·  Heat: ' + (p.heatNumber||'—') + '  ·  Supplier: ' + (p.supplier||'—'),
-        p.certNumber ? 'Cert: ' + p.certNumber : 'No cert recorded');
+        (p.certNumber ? 'Cert: ' + p.certNumber : 'No cert recorded'));
 
-      w('Stock Type',
-        'Ingots are as-cast. Billets are partially-wrought — previously forged or rolled from an ingot, giving finer grain and less porosity.',
+      w('Material Grade & Condition',
+        'Alloy grade and incoming metallurgical condition — determines forgeability, die life, and required preheat.',
         '—',
-        (p.stockType||'billet'),
-        (p.stockType||'billet'));
-
-      w('Material & Condition',
-        'Alloy grade and incoming metallurgical condition. Affects forgeability window, die load, and required preheat temperature.',
-        '—',
-        (p.grade||'—') + '  ·  ' + ((MATERIAL_CATALOG[p.materialFamily]||{}).label||'') + '  ·  ' + (p.condition||'').replace(/_/g,' '),
-        'ρ = ' + dDensity(densW));
+        (p.material||'—') + '  ·  ' + (p.condition||'').replace(/_/g,' '),
+        'ρ = ' + dDensity(dens));
 
       w('Prior Processing',
-        'Manufacturing origin and any heat treatment already applied. Ingot-cast stock has coarser grain; previously forged billets have superior grain structure.',
+        'How the stock was originally made and any heat treatment already applied. Affects grain structure and residual stress.',
         '—',
-        (p.mfgMethod||'').replace(/_/g,' ') + '  ·  Prior HT: ' + (p.priorHT||'none').replace(/_/g,' ') +
+        (p.mfgMethod||'').replace(/_/g,' ') + '  ·  Prior HT: ' + (p.priorHT||'').replace(/_/g,' ') +
           (p.grainSize ? '  ·  Grain: ASTM ' + p.grainSize : '') +
           '  ·  Grain dir: ' + (p.grainDir||'').replace(/_/g,' '),
         (p.mfgMethod||'—').replace(/_/g,' '));
 
-      w('Cross-Section Geometry',
-        'Incoming stock cross-section. Round cylinder: standard bar/billet. Rectangular prism: slab or flat. Round-corner square (RCS): octagonal-emphasis square with chamfered corners — common for large alloy steel billets.',
+      w('Stock Form',
+        'Geometry of the incoming stock piece.',
         '—',
-        geomW.replace(/_/g,' ') + '  ·  ' + shapeDesc,
-        geomW.replace(/_/g,' '));
+        (p.geometry||'—').replace(/_/g,' ') + '  ·  ' + dLen(D) + ' Ø × ' + dLen(L) +
+          (p.wallThickness > 0 ? '  ·  wall ' + dLen(p.wallThickness) : ''),
+        (p.geometry||'—').replace(/_/g,' '));
 
-      w('Cross-Section Area',
-        'Area of one cross-section slice — basis for volume calculation.',
-        'A (see formula for shape)',
-        volSubst,
-        Aw + ' ' + dLenUnit() + '²');
+      w('Cross-section Area',
+        'Area of the circular cross-section — basis for volume calculation.',
+        'A = π × (D / 2)²',
+        'A = π × (' + dLen(D) + ' / 2)²  =  π × ' + dLen(r) + '²',
+        A + ' ' + dLenUnit() + '²');
 
       w('Volume per Piece',
-        'Cross-section area × length = total piece volume.',
-        volFormula,
-        volSubst + '  ×  ' + dLen(Lw),
-        dVol(vol_mm3w));
+        'Cross-section area × length gives total piece volume.',
+        'V = A × L',
+        'V = ' + A + ' × ' + dLen(L),
+        dVol(vol_mm3));
 
       w('Mass per Piece',
-        'Volume converted to mass using the alloy density (' + dDensity(densW) + ').',
-        'M = V_cm³ × ρ ÷ 1000',
-        'M = ' + vol_cm3w + ' cm³ × ' + densW + ' ÷ 1000',
-        dMass(mPc));
+        'Volume converted to mass using the material density (' + dDensity(dens) + ').',
+        'M = V_cm³ × ρ  ÷  1000',
+        'M = ' + vol_cm3 + ' cm³ × ' + dens + '  ÷  1000',
+        dMass(mBar));
 
       w('Total Incoming Mass',
-        'Total mass of all pieces entering the process for this order.',
-        'M_total = M_pc × qty',
-        'M_total = ' + dMass(mPc) + ' × ' + qty,
-        dMass(mTotW));
+        'Total mass entering the process for this order.',
+        'M_total = M_piece × qty',
+        'M_total = ' + dMass(mBar) + ' × ' + qty,
+        dMass(mTotal));
       break;
     }
 
     case 'cut': {
-      var geomCW  = step.dimsIn.geometry || 'round_cylinder';
-      var densW2  = general.density;
-      var AcW;
-      if (geomCW === 'rectangular_prism') {
-        AcW = (step.dimsIn.width || 0) * (step.dimsIn.height || 0);
-      } else {
-        var DcW = step.dimsIn.diameter || 0;
-        AcW = round3(Math.PI * Math.pow(DcW / 2, 2));
-      }
-      var cropHW  = p.cropBothEnds === 'yes' ? (p.cropHeadMm || 0) : 0;
-      var cropTW  = p.cropBothEnds === 'yes' ? (p.cropTailMm || 0) : 0;
-      var kerfW   = p.kerfMm || 0;
-      var nCuts   = (p.numPieces || 1) + (p.cropBothEnds === 'yes' ? 1 : 0);
-      var kLoss   = round3(AcW * kerfW * nCuts / 1e6 * densW2);
-      var cLoss   = round3(AcW * (cropHW + cropTW) / 1e6 * densW2);
+      var dIn    = step.dimsIn.diameter || 150;
+      var barLen = step.dimsIn.length   || 3000;
+      var crop   = p.cropLossMm  || 0;
+      var kerf   = p.kerfMm      || 0;
+      var tLen   = p.targetLength|| 0;
+      var usable = barLen - crop;
+      var blanks = Math.max(0, Math.floor(usable / (tLen + kerf)));
+      var bVol   = round3(Math.PI * Math.pow(dIn / 2, 2) * tLen);
+      var bMass  = round3(bVol / 1e6 * general.density);
+      var mOut   = round3(bMass * blanks);
+      var mLoss  = round3(Math.max(0, step.massIn - mOut));
 
-      w('Purpose',
-        'Cut to length: size the billet/ingot to the required blank length for forging. Crop ends: remove the head and tail of an ingot or billet — these zones contain shrinkage pipe, segregation, and inclusion-rich material that must be discarded before forging. Section: divide a large piece into multiple forgeable billets.',
+      w('Cutting Method',
+        'The method and tooling used to separate blanks from bar stock. Method affects kerf width, surface condition, and heat-affected zone.',
         '—',
-        (p.purpose||'cut_to_length').replace(/_/g,' '),
-        (p.purpose||'cut_to_length').replace(/_/g,' '));
+        (p.method||'saw').replace(/_/g,' ') + '  ·  ' + (p.bladeType||'').replace(/_/g,' ') + '  ·  coolant: ' + (p.coolant||'flood'),
+        (p.surfaceReq||'as_cut').replace(/_/g,' '));
 
-      w('Saw Setup',
-        'Band saw is most common for large billet cross-sections — slow but economical on blade life and kerf. Cold saw uses a toothed disc and produces a very clean, square cut with minimal kerf.',
-        '—',
-        (p.sawType||'band_saw').replace(/_/g,' ') + '  ·  blade: ' + (p.bladeType||'bi_metal').replace(/_/g,' ') + '  ·  coolant: ' + (p.coolant||'flood'),
-        (p.sawType||'band_saw').replace(/_/g,' '));
+      w('Usable Bar Length',
+        'Subtract crop loss (discarded bar ends with poor grain structure / inclusion-rich zones) from total bar length.',
+        'L_use = L_bar − L_crop',
+        'L_use = ' + dLen(barLen) + ' − ' + dLen(crop),
+        dLen(usable));
 
-      w('Crop Loss',
-        'Crop ends are discarded material from the head and tail of the ingot or billet. The head contains the shrinkage pipe (voids from solidification). The tail can contain segregation, inclusions, and poor-grain zones. Cropping is mandatory for quality forgings.',
-        'M_crop = A_cs × (L_head + L_tail) ÷ 1 000 000 × ρ',
-        'M_crop = ' + AcW + ' × (' + dLen(cropHW) + ' + ' + dLen(cropTW) + ') ÷ 1 000 000 × ' + densW2,
-        dMass(cLoss));
+      w('Blanks per Bar',
+        'How many blanks fit in the usable length. Each cut consumes kerf — material converted to swarf by the blade.',
+        'n = ⌊ L_use ÷ (L_blank + kerf) ⌋',
+        'n = ⌊ ' + dLen(usable) + ' ÷ (' + dLen(tLen) + ' + ' + dLen(kerf) + ') ⌋',
+        blanks + ' blanks');
 
-      w('Kerf Loss',
-        'Material consumed by the saw blade on each cut. Kerf = blade thickness. For large billets, kerf per cut can represent significant mass — especially on high-alloy materials.',
-        'M_kerf = A_cs × kerf × n_cuts ÷ 1 000 000 × ρ',
-        'M_kerf = ' + AcW + ' × ' + dLen(kerfW) + ' × ' + nCuts + ' cuts ÷ 1 000 000 × ' + densW2,
-        dMass(kLoss));
+      w('Blank Volume',
+        'Volume of one cylindrical blank — same diameter as the incoming bar, target blank length.',
+        'V = π × (D ÷ 2)² × L_blank',
+        'V = π × (' + dLen(dIn) + ' ÷ 2)² × ' + dLen(tLen),
+        dVol(bVol));
 
-      w('Total Cut Loss',
-        'Sum of crop end loss and all kerf losses. This material is scrap — returned for remelt.',
-        'M_loss = M_crop + M_kerf',
-        'M_loss = ' + dMass(cLoss) + ' + ' + dMass(kLoss),
-        dMass(round3(cLoss + kLoss)));
+      w('Mass per Blank',
+        'Convert blank volume to mass using material density.',
+        'M_blank = V_mm³ ÷ 1 000 000 × ρ',
+        'M_blank = ' + fmtVol(bVol) + ' ÷ 1 000 000 × ' + general.density,
+        dMass(bMass));
 
-      w('Mass Out',
-        'Usable billet mass proceeding to the furnace.',
-        'M_out = M_in − M_loss',
-        'M_out = ' + dMass(step.massIn) + ' − ' + dMass(round3(cLoss + kLoss)),
-        dMass(step.massOut));
+      w('Total Blank Mass Out',
+        'Total usable mass leaving this step (n blanks × mass each).',
+        'M_out = M_blank × n',
+        'M_out = ' + dMass(bMass) + ' × ' + blanks,
+        dMass(mOut));
+
+      w('Cut Loss',
+        'Material lost to saw kerf, crop ends, and bar remnant. Kerf loss = (n_cuts × kerf × A). Remnant = usable mod (L_blank + kerf).',
+        'M_loss = M_in − M_out',
+        'M_loss = ' + dMass(step.massIn) + ' − ' + dMass(mOut),
+        dMass(mLoss));
       break;
     }
 
@@ -2125,19 +1772,19 @@ function buildStepWorkings(step) {
       var mOut2    = round3(step.massIn - sLoss);
 
       w('Furnace Setup',
-        'Gas furnaces are primary; electric is used for small or precision jobs. Atmosphere controls scale formation — air causes the most oxidation, nitrogen or controlled carbon dramatically reduces it.',
+        'Furnace type and atmosphere determine scale formation rate. Controlled atmospheres (N₂, endothermic, vacuum) dramatically reduce scale loss vs. open-air heating.',
         '—',
-        (p.furnaceType||'gas') + ' furnace  ·  atmosphere: ' + (p.atmosphere||'air') + '  ·  load: ' + (p.loadMethod||'batch').replace(/_/g,' '),
-        p.furnaceId ? 'Furnace ID: ' + p.furnaceId : (p.furnaceType||'gas') + ' furnace');
+        (p.furnaceType||'gas_fired').replace(/_/g,' ') + '  ·  atmosphere: ' + (p.atmosphere||'air') + '  ·  load: ' + (p.loadMethod||'batch').replace(/_/g,' '),
+        p.furnaceId ? 'Furnace: ' + p.furnaceId : (p.furnaceType||'gas_fired').replace(/_/g,' '));
 
       w('Scale (Oxidation) Loss',
-        'At forging temperature iron oxidises rapidly, forming iron-oxide scale (Fe₂O₃, Fe₃O₄) that flakes off. Air atmosphere: typically 1.5–3% loss. Nitrogen / controlled atmosphere: 0.2–0.5%.',
+        'At forge temperature, iron oxidises rapidly forming iron-oxide scale (Fe₂O₃, Fe₃O₄). Scale flakes off during forging. Air atmosphere: 1.5–3%. Controlled atmosphere: 0.2–0.5%. Salt bath: near 0%.',
         'M_scale = M_in × (scale% ÷ 100)',
         'M_scale = ' + dMass(step.massIn) + ' × (' + sLossPct + ' ÷ 100)',
         dMass(sLoss));
 
       w('Mass After Heating',
-        'Mass entering the forge after scale loss — the effective billet mass for flash and forge-ratio calculations.',
+        'Mass entering the forge press after scale loss. This is the effective starting mass for flash and forge ratio calculations.',
         'M_out = M_in − M_scale',
         'M_out = ' + dMass(step.massIn) + ' − ' + dMass(sLoss),
         dMass(mOut2));
@@ -2167,89 +1814,50 @@ function buildStepWorkings(step) {
       var R    = p.forgeRatio || 0;
 
       w('Equipment & Process',
-        'Press: slow, high tonnage, controlled stroke — ideal for large open-die work and complex sections. Hammer: rapid blows, high strain rate, excellent grain refinement — faster cycling for smaller work.',
+        'Press type determines strain rate and deformation mode. Hydraulic presses: slow, controlled, good for complex shapes. Hammers: high strain rate, good grain refinement. Ring mills: continuous deformation for rings/donuts.',
         '—',
-        (p.equipment||'press') + '  ·  ' + (p.process||'open_die').replace(/_/g,' ') + '  ·  ' + (p.pressTonnage||'—') + ' ton  ·  ' + (p.numHits||1) + ' hit' + ((p.numHits||1)>1?'s':''),
-        p.dieNumber ? 'Die: ' + p.dieNumber : (p.process||'open_die').replace(/_/g,' '));
+        (p.process||'').replace(/_/g,' ') + '  ·  ' + (p.equipment||'').replace(/_/g,' ') + '  ·  ' + (p.pressTonnage||'—') + ' ton  ·  ' + (p.numHits||1) + ' hit' + ((p.numHits||1)>1?'s':''),
+        (p.dieNumber ? 'Die: ' + p.dieNumber : (p.process||'').replace(/_/g,' ')));
 
       w('Die Setup',
-        'Die preheat (typically 150–300 °C) prevents thermal shock cracking and slows surface chilling of the workpiece, improving metal flow and reducing required tonnage. Graphite lubricant reduces friction and eases part ejection.',
+        'Die preheat prevents thermal shock cracking and improves metal flow. Cold dies chill the workpiece surface, increasing flow stress and die load. Lubricant reduces friction and die wear.',
         '—',
         'Die preheat: ' + dTemp(p.dieTemp||200) + '  ·  Lubricant: ' + (p.lubricant||'graphite').replace(/_/g,' '),
         dTemp(p.dieTemp||200));
 
       w('Flash Loss',
-        'Flash is intentional excess metal pushed out at the die parting line to ensure complete cavity fill. Flash % is of billet mass entering the die. Open-die work typically has 0% intentional flash; closed-die 10–20%.',
+        'Flash is intentional excess metal squeezed out at the die parting line. It ensures complete cavity fill. Flash % is of the billet entering the die — typically 10–20% for closed-die forgings.',
         'M_flash = M_in × (flash% ÷ 100)',
         'M_flash = ' + dMass(step.massIn) + ' × (' + fPct + ' ÷ 100)',
         dMass(fLoss));
 
       w('Mass Out of Forge',
-        'Forged part mass (including any flash still attached). Flash is removed at the Trim Flash step.',
+        'Forged part mass including flash still attached. Flash is removed at the Trim step.',
         'M_out = M_in − M_flash',
         'M_out = ' + dMass(step.massIn) + ' − ' + dMass(fLoss),
         dMass(mOut3));
 
       w('Forge Ratio',
-        'Cross-sectional area reduction from billet to forged shape. R ≥ 3:1 breaks up cast structure and closes ingot porosity. R ≥ 5:1 achieves full grain refinement in most alloy steels. Critical applications often require R ≥ 4:1 minimum.',
+        'Forge ratio = cross-sectional area reduction. R ≥ 3:1 breaks up cast microstructure and closes porosity. R ≥ 5:1 achieves full grain refinement in most alloy steels. Values below 3:1 may leave inadequate grain structure for critical applications.',
         'R = A_in ÷ A_out',
         'R (target) = ' + R,
         R + ' : 1' + (R >= 5 ? '  ✓ excellent' : R >= 3 ? '  ✓ acceptable' : '  ⚠ below 3:1 minimum'));
 
       w('True (Logarithmic) Strain',
-        'True strain ε = ln(h₀/h₁) — additive across passes, accurately representing large plastic deformations. Engineering strain underestimates at high reductions. Cumulative true strain tracks total plastic work.',
+        'True strain ε = ln(h₀/h₁). Logarithmic strain is additive across deformation steps and accurately represents large plastic strains. Engineering strain would underestimate at high reductions.',
         'ε = ln( h₀ ÷ h₁ )',
         eps !== null
           ? 'ε = ln( ' + dLen(h0_) + ' ÷ ' + dLen(h1_) + ' )  =  ln( ' + round3(h0_/h1_) + ' )'
-          : 'ε = ln( h₀ ÷ h₁ )  — set input / output heights',
+          : 'ε = ln( h₀ ÷ h₁ )  — set input/output heights',
         eps !== null ? 'ε = ' + eps : '—');
 
       w('% Height Reduction',
-        'Engineering height reduction — quick reference for press tonnage estimation and operator targets. Not additive across passes; use true strain for cumulative tracking.',
+        'Engineering height reduction — useful for quick reference and press tonnage estimation. Not additive across passes (use true strain for that).',
         '%R = (h₀ − h₁) ÷ h₀ × 100',
         pctR !== null
           ? '%R = (' + dLen(h0_) + ' − ' + dLen(h1_) + ') ÷ ' + dLen(h0_) + ' × 100'
-          : '%R — set input / output heights',
+          : '%R — set input/output heights',
         pctR !== null ? pctR + '%' : '—');
-      break;
-    }
-
-    case 'ring_mill': {
-      var odRM = p.outOD || 0; var idRM = p.outID || 0; var htRM = p.outHeight || 0;
-      var wallRM = round3((odRM - idRM) / 2);
-      var volRM  = round3(Math.max(0, Math.PI / 4 * (odRM * odRM - idRM * idRM) * htRM));
-      var mRM    = round3(volRM / 1e6 * general.density);
-      var mLossRM= round3(Math.max(0, step.massIn - mRM));
-
-      w('Ring Mill Process',
-        'The ring mill drives a mandrel through the preform bore while a drive roll compresses the OD, reducing wall thickness and increasing diameter. The axial rolls control ring height simultaneously.',
-        '—',
-        'Preform: ' + (p.preformType||'pierced_disc').replace(/_/g,' ') + '  ·  mandrel Ø ' + dLen(p.mandrelDiam||0) + '  ·  ' + (p.rollPasses||1) + ' passes',
-        (p.preformType||'pierced_disc').replace(/_/g,' '));
-
-      w('Ring Dimensions',
-        'Final rolled ring geometry. Wall thickness = (OD − ID) ÷ 2. Tighter wall-to-height ratios require more passes and careful temperature control.',
-        'Wall = (OD − ID) ÷ 2',
-        'Wall = (' + dLen(odRM) + ' − ' + dLen(idRM) + ') ÷ 2',
-        'Wall = ' + dLen(wallRM) + '  ·  OD ' + dLen(odRM) + '  ·  ID ' + dLen(idRM) + '  ·  H ' + dLen(htRM));
-
-      w('Contour',
-        'OD and ID contours can be forged-in by profiled rolls (net-shape forging) or machined afterward. Forged contours save machining stock but require purpose-built tooling. Example: bearing races use profiled OD/ID contours.',
-        '—',
-        'OD contour: ' + (p.odContour||'none') + '  ·  ID contour: ' + (p.idContour||'none'),
-        (p.odContour||'none') !== 'none' || (p.idContour||'none') !== 'none' ? 'contoured ring' : 'plain ring');
-
-      w('Ring Volume',
-        'Volume of a hollow cylinder = (π ÷ 4) × (OD² − ID²) × H.',
-        'V = π ÷ 4 × (OD² − ID²) × H',
-        'V = π ÷ 4 × (' + dLen(odRM) + '² − ' + dLen(idRM) + '²) × ' + dLen(htRM),
-        dVol(volRM));
-
-      w('Mass Out',
-        'Ring mass. Loss reflects material that was in the preform but not captured in the final ring — flash, scale, or piercing slugs already removed upstream.',
-        'M_out = V ÷ 1 000 000 × ρ',
-        'M_out = ' + fmtVol(volRM) + ' ÷ 1 000 000 × ' + general.density,
-        dMass(mRM));
       break;
     }
 
@@ -2259,25 +1867,25 @@ function buildStepWorkings(step) {
       var tOut  = round3(step.massIn - tLoss);
 
       w('Trim Condition',
-        'Hot trimming (immediately post-forge, above ~650 °C) requires less force and preserves trim die life. Cold trimming gives a cleaner cut and better dimensional control but demands higher forces and can introduce residual stress.',
+        'Hot trimming (immediately after forge) requires less force and preserves die life. Cold trimming gives cleaner cut and better dimensional control but requires higher forces and can introduce residual stress.',
         '—',
-        (p.trimCondition||'hot') + ' trim  ·  ' + (p.dieType||'conventional').replace(/_/g,' ') + ' die' + (p.dieNumber ? '  ·  Die #' + p.dieNumber : ''),
+        (p.trimCondition||'hot') + ' trim  ·  ' + (p.dieType||'conventional').replace(/_/g,' ') + ' die' + (p.dieNumber ? '  ·  ' + p.dieNumber : ''),
         (p.trimCondition||'hot') + ' trim');
 
       w('Flash Removed',
-        'Flash mass removed at this step — the intentional overflow from the forge die parting line.',
+        'Flash mass = flash% of forged part mass. This is the mass that was intentionally pushed out at the parting line during forging.',
         'M_trim = M_in × (flash% ÷ 100)',
         'M_trim = ' + dMass(step.massIn) + ' × (' + tFPct + ' ÷ 100)',
         dMass(tLoss));
 
       w('Flash Disposition',
-        'Reforging retains the most value (alloy + thermal energy partly recovered). Remelt recovers alloy value. Scrap recycling is lowest value but simplest.',
+        'Trimmed flash disposition. Reforging is most efficient (reuses material). Remelt recovers alloy value. Scrap recycling loses value added in heating and forging.',
         '—',
         (p.flashDisposition||'scrap_recycle').replace(/_/g,' '),
         (p.flashDisposition||'scrap_recycle').replace(/_/g,' '));
 
       w('Mass After Trimming',
-        'Net forging mass proceeding to heat treatment or machining.',
+        'Net forging mass. This is the shape that proceeds to heat treatment or machining.',
         'M_out = M_in − M_trim',
         'M_out = ' + dMass(step.massIn) + ' − ' + dMass(tLoss),
         dMass(tOut));
@@ -2286,43 +1894,49 @@ function buildStepWorkings(step) {
 
     case 'heat_treat': {
       var htHardStr = (p.targetHardnessMin > 0 || p.targetHardnessMax > 0)
-        ? p.targetHardnessMin + '–' + p.targetHardnessMax + ' ' + (p.hardnessScale||'HB')
+        ? p.targetHardnessMin + '–' + p.targetHardnessMax + ' ' + (p.hardnessScale||'HRC')
         : 'not specified';
 
       w('Process & Specification',
-        'Normalize: air-cool from austenitize — refines grain, relieves stress. Anneal: slow furnace cool — maximum softness. Quench & Temper: water quench then temper — maximises strength and toughness. Stress Relief: below Ac1 — removes residual stress without phase change.',
+        'Heat treatment process selected based on required mechanical properties. Spec number provides audit traceability to customer or industry requirements.',
         '—',
         (p.process||'normalize').replace(/_/g,' ') + (p.specNumber ? '  ·  ' + p.specNumber : ''),
         (p.process||'normalize').replace(/_/g,' '));
 
-      w('Furnace',
-        'Gas furnace is primary. Electric is used for small or precision jobs where tighter temperature uniformity is needed.',
+      w('Furnace & Atmosphere',
+        'Atmosphere controls decarburization and scale. Vacuum/controlled atmosphere prevents surface degradation — important for bearing steels, aerospace alloys, and tight-tolerance parts.',
         '—',
-        (p.furnaceType||'gas') + ' furnace  ·  heat to ' + dTemp(p.targetTemp||0) + '  ·  soak ' + (p.soakMin||60) + ' min',
-        (p.furnaceType||'gas') + ' furnace');
+        (p.furnaceType||'electric_resistance').replace(/_/g,' ') + '  ·  ' + (p.atmosphere||'air'),
+        (p.atmosphere||'air'));
+
+      w('Austenitize / Heat',
+        'Steel must be fully austenitized (above Ac3) before quenching to form martensite. Insufficient temperature → incomplete transformation → soft spots. Soak time ensures uniform carbon distribution.',
+        'T_heat  >  Ac3,  soak for t',
+        'T_heat = ' + dTemp(p.austenitizeTemp||0) + '  ·  soak = ' + (p.soakMin||60) + ' min',
+        dTemp(p.austenitizeTemp||0));
 
       w('Quench',
-        'This forge currently uses water quench tanks. Water is the fastest quench medium — highest hardness potential but highest risk of quench cracking, particularly in large sections or complex shapes.',
+        'Cooling rate must exceed critical cooling rate to form martensite. Water = fastest (risk of cracking). Oil = moderate. Air = slow (normalize). Press quench prevents distortion in thin-flanged parts.',
         '—',
-        (p.quenchant||'water') + '  ·  agitation: ' + (p.quenchAgitation||'still'),
-        (p.quenchant||'water'));
+        (p.quenchant||'air') + '  ·  agitation: ' + (p.quenchAgitation||'still'),
+        (p.quenchant||'air'));
 
       if ((p.temperTemp||0) > 0) {
         w('Temper',
-          'As-quenched martensite is hard but brittle. Tempering recovers toughness by allowing carbon redistribution in the martensitic matrix. Higher temper temperature = lower hardness, higher toughness and ductility.',
+          'As-quenched martensite is extremely hard but brittle. Tempering reduces hardness and increases toughness by allowing carbon redistribution. Higher temper temp = lower hardness, higher toughness.',
           'T_temper  <  Ac1',
           'T_temper = ' + dTemp(p.temperTemp) + '  ·  soak = ' + (p.temperSoakMin||0) + ' min',
           dTemp(p.temperTemp));
       }
 
-      w('Target Hardness',
-        'Measured using Brinell hardness tester. Brinell (HB) is appropriate for forgings — the large ball indenter averages over a larger area and is not sensitive to surface scale or decarb layers.',
+      w('Target Properties',
+        'Hardness range is the primary acceptance criterion after heat treatment. Hardness correlates to tensile strength: for alloy steels, UTS ≈ HRC × 36 MPa (approx).',
         '—',
-        'Target: ' + htHardStr,
+        'Target hardness: ' + htHardStr + (p.caseDepth > 0 ? '  ·  case depth: ' + dLen(p.caseDepth) : ''),
         htHardStr);
 
       w('Mass Balance',
-        'Heat treatment has negligible mass loss when conducted in a furnace with controlled atmosphere. No material is removed in this step.',
+        'Heat treatment does not remove material (assuming controlled atmosphere or salt bath). Scale loss in open-air heat treat is typically < 0.1% and considered negligible at this stage.',
         'M_out = M_in',
         'M_out = ' + dMass(step.massIn),
         dMass(step.massOut));
@@ -2330,8 +1944,8 @@ function buildStepWorkings(step) {
     }
 
     case 'machine': {
-      var dI  = step.dimsIn.diameter || step.dimsIn.od || 100;
-      var hI  = step.dimsIn.height   || 150;
+      var dI  = step.dimsIn.diameter || step.dimsIn.outDiameter || 100;
+      var hI  = step.dimsIn.height   || step.dimsIn.outHeight   || 150;
       var dO  = p.outDiameter || dI;
       var hO  = p.outHeight   || hI;
       var vI  = round3(Math.PI * Math.pow(dI/2, 2) * hI);
@@ -2340,38 +1954,38 @@ function buildStepWorkings(step) {
       var cM  = round3(dV / 1e6 * general.density);
       var mO  = round3(Math.max(0, step.massIn - cM));
 
-      w('Equipment & Operation',
-        'Lathe: turning, facing, boring, threading on round parts. Vertical Mill: face milling, contouring on flat or prismatic features. Boullard (vertical boring mill): large diameter boring, facing, turning — suited to large forgings too heavy for a conventional lathe. Drill Press: hole drilling. Saw: cutoff. Sander/Grinder: surface dressing.',
+      w('Operation & Equipment',
+        'Machine type and operation determine achievable tolerances and surface finish. CNC multi-axis enables complex geometries in fewer setups. More setups introduce datum shift errors.',
         '—',
-        (p.equipment||'lathe').replace(/_/g,' ') + '  ·  ' + (p.operation||'turn') + '  ·  ' + (p.numSetups||1) + ' setup' + ((p.numSetups||1)>1?'s':''),
-        p.programNumber ? 'Ref: ' + p.programNumber : (p.operation||'turn'));
+        (p.operation||'turn') + '  ·  ' + (p.machineType||'cnc_lathe').replace(/_/g,' ') + '  ·  ' + (p.numSetups||1) + ' setup' + ((p.numSetups||1)>1?'s':'') + '  ·  coolant: ' + (p.coolant||'flood'),
+        (p.programNumber ? 'Pgm: ' + p.programNumber : (p.operation||'turn')));
 
       w('Input Volume',
-        'Volume of the forging as received at machining — deliberately oversized by the machining stock allowance to guarantee finish dimensions can be hit.',
+        'Volume of the forging as received at machining — intentionally oversized by the machining stock allowance.',
         'V_in = π × (D_in ÷ 2)² × H_in',
         'V_in = π × (' + dLen(dI) + ' ÷ 2)² × ' + dLen(hI),
         dVol(vI));
 
       w('Final Machined Volume',
-        'Target finished volume after all operations.',
+        'Target volume of the finished part after all machining operations.',
         'V_out = π × (D_out ÷ 2)² × H_out',
         'V_out = π × (' + dLen(dO) + ' ÷ 2)² × ' + dLen(hO),
         dVol(vO));
 
-      w('Volume Removed (Chips)',
-        'The planned material removal. This is why forgings are intentionally oversized — the stock allowance ensures metal exists to achieve final dimensions.',
+      w('Volume Removed',
+        'Chips/swarf. This planned material removal is why forgings are deliberately oversized — the stock allowance ensures enough material exists to hit final dimensions.',
         'ΔV = V_in − V_out',
         'ΔV = ' + dVol(vI) + ' − ' + dVol(vO),
         dVol(dV));
 
       w('Chip Mass',
-        'Mass of removed chips and swarf. Chips are recycled as scrap but represent alloy value, heating energy, and forging energy already invested.',
+        'Mass of removed material. Chips are recycled but this mass represents heating energy, forging energy, and alloy value already spent.',
         'M_chips = ΔV ÷ 1 000 000 × ρ',
         'M_chips = ' + fmtVol(dV) + ' ÷ 1 000 000 × ' + general.density,
         dMass(cM));
 
       w('Quality Requirements',
-        'Surface finish Ra (roughness average) and IT tolerance class define the precision required. Ra 125 μin = standard turned. Ra 63 μin = fine turned. Ra 32 μin = ground. IT7 = standard machined, IT6 = precision.',
+        'Surface finish Ra and IT tolerance class define the precision required. Ra 63 μin = fine turned. Ra 32 μin = ground. IT6 = precision, IT7 = standard CNC, IT9 = rough machined.',
         '—',
         'Surface: Ra ' + (p.surfaceFinish||'125') + ' μin  ·  Tolerance: ' + (p.toleranceClass||'IT7'),
         'Ra ' + (p.surfaceFinish||'125') + '  ' + (p.toleranceClass||'IT7'));
@@ -2384,114 +1998,70 @@ function buildStepWorkings(step) {
       break;
     }
 
-    case 'weld': {
-      w('Weld Process',
-        'Arc welding and MIG (GMAW) with argon or 730 shielding gas. Used for repair, build-up, or joining operations. 730 is a mixed argon/CO₂ blend suited to structural carbon and alloy steels.',
-        '—',
-        (p.process||'arc') + ' weld  ·  gas: ' + (p.shieldingGas||'argon') + (p.filler ? '  ·  filler: ' + p.filler : ''),
-        (p.process||'arc') + ' weld');
-
-      w('Passes',
-        'Multi-pass welds build up material in layers. Each pass must be cleaned of slag before the next. More passes = more heat input = larger heat-affected zone.',
-        '—',
-        (p.passes||1) + ' pass' + ((p.passes||1) > 1 ? 'es' : ''),
-        (p.passes||1) + ' pass' + ((p.passes||1) > 1 ? 'es' : ''));
-
-      w('Post-Weld Treatment',
-        'Stress relief (typically 550–650 °C for carbon/alloy steels) reduces residual weld stresses, lowers risk of delayed cracking, and improves dimensional stability in service.',
-        '—',
-        (p.pwht||'none').replace(/_/g,' '),
-        (p.pwht||'none').replace(/_/g,' '));
-
-      w('Mass Balance',
-        'Weld filler adds a small amount of mass but is not tracked here — mass is treated as a pass-through for process flow purposes.',
-        'M_out ≈ M_in',
-        'M_out = ' + dMass(step.massIn),
-        dMass(step.massOut));
-      break;
-    }
-
     case 'inspect': {
-      var checks2 = [];
-      if (p.checkDimensional === 'yes') checks2.push('dimensional');
-      if (p.checkHardness    === 'yes') checks2.push('Brinell hardness');
-      if (p.checkTemp        === 'yes') checks2.push('temperature record');
-
-      w('Inspection Method',
-        'Dimensional: tape, calipers, gauges. Brinell Hardness: Brinell tester — large ball suited to coarse-grained forgings. Temperature: multiped recorder verifies furnace cycle was achieved and documents the thermal history.',
+      w('Inspection Method & Standard',
+        'Inspection method is determined by the characteristic being verified and the applicable specification. NDT methods detect internal or surface flaws not visible dimensionally.',
         '—',
-        (p.method||'dimensional').replace(/_/g,' ') + (p.specNumber ? '  ·  ' + p.specNumber : ''),
+        (p.method||'dimensional').replace(/_/g,' ') + '  ·  standard: ' + (p.standard||'customer_dwg').replace(/_/g,' ') + (p.specNumber ? '  (' + p.specNumber + ')' : ''),
         (p.method||'dimensional').replace(/_/g,' '));
 
+      w('Sampling Plan',
+        '100% inspection catches all defects but is costly. AQL (Acceptable Quality Limit) sampling accepts a defined defect rate. First article establishes conformance before production run. Skip-lot used for mature, high-confidence processes.',
+        '—',
+        (p.samplingPlan||'100_percent').replace(/_/g,' ') + (p.samplingPlan === 'AQL' ? '  ·  AQL ' + (p.aqlLevel||'1.0') : ''),
+        (p.samplingPlan||'100_percent').replace(/_/g,' '));
+
+      var checks2 = [];
+      if (p.checkDimensional === 'yes') checks2.push('dimensional');
+      if (p.checkHardness    === 'yes') checks2.push('hardness');
+      if (p.checkNdt         === 'yes') checks2.push((p.ndtMethod||'NDT').replace(/_/g,' '));
       w('Required Checks',
-        'All listed checks must pass before the part proceeds to the next step.',
+        'Checks required at this inspection gate. All must pass for part to proceed.',
         '—',
         checks2.length > 0 ? checks2.join('  ·  ') : 'per method above',
         checks2.length > 0 ? checks2.join(', ') : 'per method');
 
-      w('Sampling Plan',
-        '100% inspection is standard for forgings on first runs or critical applications. First article inspection qualifies the process before full production.',
-        '—',
-        (p.samplingPlan||'100_percent').replace(/_/g,' '),
-        (p.samplingPlan||'100_percent').replace(/_/g,' '));
-
-      w('Disposition',
-        'Pass → proceeds. Hold → awaits engineering review. Conditional pass → accepted with documented deviation. Scrap → removed from flow.',
+      w('Disposition / Result',
+        'Current inspection result. Pass → proceeds to next step. Hold → awaits engineering review. Conditional pass → accepted with documented deviation. Scrap → removed from process.',
         '—',
         (p.result||'pending').replace(/_/g,' '),
         (p.result||'pending').replace(/_/g,' '));
 
       w('Mass Balance',
-        'Inspection is non-destructive — mass passes through unchanged for conforming parts.',
-        'M_out = M_in  (pass)',
+        'Inspection is non-destructive for conforming parts — mass passes through unchanged. Scrapped parts remove their mass from the process flow.',
+        'M_out = M_in  (if pass)',
         'M_out = ' + dMass(step.massIn),
         dMass(step.massOut));
       break;
     }
 
     case 'stock_out': {
-      var ptSO = p.productType || 'bar';
-      var pdSO = '';
-      if (ptSO === 'bar') {
-        pdSO = (p.barShape||'round') + ' bar';
-        if (p.isStepped === 'yes') pdSO += '  ·  ' + (p.numSteps||1) + '-step';
-        pdSO += '  ·  L: ' + dLen(p.barLength||0);
-      } else if (ptSO === 'disc') {
-        pdSO = 'disc  Ø ' + dLen(p.discOD||0) + '  ×  ' + dLen(p.discThickness||0) + ' thick';
-      } else if (ptSO === 'ring') {
-        pdSO = 'ring  OD ' + dLen(p.ringOD||0) + '  ID ' + dLen(p.ringID||0) + '  H ' + dLen(p.ringHeight||0);
-        if ((p.odContour||'none') !== 'none') pdSO += '  ·  OD: ' + p.odContour;
-        if ((p.idContour||'none') !== 'none') pdSO += '  ·  ID: ' + p.idContour;
-      } else if (ptSO === 'mushroom') {
-        pdSO = 'mushroom  flange Ø ' + dLen(p.flangeDiam||0) + '  stem Ø ' + dLen(p.stemDiam||0) + '  H ' + dLen(p.totalHeight||0);
-      }
-
-      w('Product Description',
-        'The finished forged product. Bars can be round, rectangular, hexagonal, or stepped (multiple sections of varying shape/size). Discs are pancake-form forgings. Rings are pierced discs — rolled on the ring mill. Mushrooms are flange-and-stem shapes for aerospace/turbine applications.',
-        '—',
-        pdSO,
-        ptSO);
-
       w('Part Identification',
-        'Part number, revision, and work order provide full traceability from customer drawing to shipped product.',
+        'Final part number, revision, and work order link this output to the originating order and engineering drawing.',
         '—',
         (p.partNumber||'—') + (p.partRevision ? '  Rev ' + p.partRevision : '') + (p.workOrderNumber ? '  ·  WO: ' + p.workOrderNumber : ''),
-        p.partNumber||'—');
+        (p.partNumber||'unspecified'));
 
-      w('Customer & Shipping',
-        'Final delivery destination and method.',
+      w('Destination & Shipping',
+        'Where the finished parts go. Internal transfer keeps parts in-house. Subcontractor sends for outside processing. Customer is final delivery.',
         '—',
-        (p.customerName||'—') + '  ·  ' + (p.shippingMethod||'ground').replace(/_/g,' '),
-        p.customerName||'—');
+        (p.destination||'customer').replace(/_/g,' ') + (p.customerName ? '  ·  ' + p.customerName : '') + '  ·  ' + (p.shippingMethod||'ground').replace(/_/g,' '),
+        (p.destination||'customer').replace(/_/g,' '));
+
+      w('Packaging & Preservation',
+        'Packaging protects parts from mechanical damage and corrosion in transit and storage. VCI paper and rust preventive oil are standard for carbon and alloy steel. Desiccant required for humid environments.',
+        '—',
+        (p.packagingType||'standard_crate').replace(/_/g,' ') + '  ·  ' + (p.cleaningReq||'clean_and_oil').replace(/_/g,' ') + '  ·  preservative: ' + (p.preservative||'none').replace(/_/g,' '),
+        (p.packagingType||'standard_crate').replace(/_/g,' '));
 
       w('Certification',
-        'C of C (Certificate of Conformance) and Material Test Reports are standard for industrial forgings. First Article and FAIR are required for aerospace customers.',
+        'Certification documents link the shipped parts to material test reports, first article inspection, or conformance statements. Required for aerospace, defense, and safety-critical applications.',
         '—',
         p.certRequired === 'yes' ? (p.certType||'C_of_C').replace(/_/g,' ') + ' required' : 'no certification required',
         p.certRequired === 'yes' ? (p.certType||'C_of_C').replace(/_/g,' ') : 'none');
 
       w('Final Mass Out',
-        'Total mass shipped — the recoverable output of the entire process chain.',
+        'Total mass shipped. Represents the recoverable output of the entire process chain.',
         'M_shipped = M_in  (pass-through)',
         'M_shipped = ' + dMass(step.massIn),
         dMass(step.massOut));
@@ -2500,7 +2070,7 @@ function buildStepWorkings(step) {
 
     default: {
       w('Mass Flow',
-        'Pass-through step — mass is unchanged.',
+        'This node type is a pass-through — mass is unchanged.',
         'M_out = M_in',
         'M_out = ' + dMass(step.massIn),
         dMass(step.massOut));
@@ -2836,26 +2406,15 @@ function renderNodeEl(node) {
   // Smart preview key selection per node type
   var allReal = def.paramDefs.filter(function(pd) { return pd.section === undefined; });
   var previewKeys = null;
-  if (node.type === 'stock_in')   previewKeys = ['grade', 'geometry'];
-  if (node.type === 'cut')        previewKeys = ['purpose', 'targetLength'];
+  if (node.type === 'stock_in')   previewKeys = ['material', 'geometry'];
+  if (node.type === 'cut')        previewKeys = ['method', 'targetLength'];
   if (node.type === 'heat')       previewKeys = ['targetTemp', 'furnaceType'];
-  if (node.type === 'forge')      previewKeys = ['equipment', 'process'];
-  if (node.type === 'ring_mill')  previewKeys = ['outOD', 'outID'];
+  if (node.type === 'forge')      previewKeys = ['process', 'equipment'];
   if (node.type === 'trim')       previewKeys = ['trimCondition', 'flashPct'];
-  if (node.type === 'heat_treat') previewKeys = ['process', 'targetTemp'];
-  if (node.type === 'machine')    previewKeys = ['equipment', 'operation'];
-  if (node.type === 'weld')       previewKeys = ['process', 'shieldingGas'];
+  if (node.type === 'heat_treat') previewKeys = ['process', 'austenitizeTemp'];
+  if (node.type === 'machine')    previewKeys = ['operation', 'machineType'];
   if (node.type === 'inspect')    previewKeys = ['method', 'result'];
-  if (node.type === 'stock_out')  previewKeys = ['productType', 'partNumber'];
-
-
-
-
-
-
-
-
-
+  if (node.type === 'stock_out')  previewKeys = ['destination', 'partNumber'];
   var previews = previewKeys
     ? previewKeys.map(function(k) { return allReal.find(function(pd) { return pd.key === k; }); }).filter(Boolean)
     : allReal.slice(0, 2);
@@ -2942,17 +2501,15 @@ function refreshNodeEl(nodeId) {
   if (lbl) lbl.textContent = node.label || def.label;
   var allReal = def.paramDefs.filter(function(pd) { return pd.section === undefined; });
   var previewKeys = null;
-  if (node.type === 'stock_in')   previewKeys = ['grade', 'geometry'];
-  if (node.type === 'cut')        previewKeys = ['purpose', 'targetLength'];
+  if (node.type === 'stock_in')   previewKeys = ['material', 'geometry'];
+  if (node.type === 'cut')        previewKeys = ['method', 'targetLength'];
   if (node.type === 'heat')       previewKeys = ['targetTemp', 'furnaceType'];
-  if (node.type === 'forge')      previewKeys = ['equipment', 'process'];
-  if (node.type === 'ring_mill')  previewKeys = ['outOD', 'outID'];
+  if (node.type === 'forge')      previewKeys = ['process', 'equipment'];
   if (node.type === 'trim')       previewKeys = ['trimCondition', 'flashPct'];
-  if (node.type === 'heat_treat') previewKeys = ['process', 'targetTemp'];
-  if (node.type === 'machine')    previewKeys = ['equipment', 'operation'];
-  if (node.type === 'weld')       previewKeys = ['process', 'shieldingGas'];
+  if (node.type === 'heat_treat') previewKeys = ['process', 'austenitizeTemp'];
+  if (node.type === 'machine')    previewKeys = ['operation', 'machineType'];
   if (node.type === 'inspect')    previewKeys = ['method', 'result'];
-  if (node.type === 'stock_out')  previewKeys = ['productType', 'partNumber'];
+  if (node.type === 'stock_out')  previewKeys = ['destination', 'partNumber'];
   var previews = previewKeys
     ? previewKeys.map(function(k) { return allReal.find(function(pd) { return pd.key === k; }); }).filter(Boolean)
     : allReal.slice(0, 2);
@@ -3819,18 +3376,9 @@ function printToPDF() {
       } else {
         var raw=p[pd.key];
         if (raw===undefined||raw==='') return;
-        var displayVal;
-        if (pd.unitType) {
-          displayVal = toDisplay(raw,pd.unitType)+unitSuffix(pd.unitType);
-        } else if (pd.type === 'material_family') {
-          displayVal = (MATERIAL_CATALOG[raw]||{}).label || raw;
-        } else if (pd.type === 'grade_lookup') {
-          displayVal = raw;
-        } else if (pd.type === 'select') {
-          displayVal = String(raw).replace(/_/g,' ');
-        } else {
-          displayVal = raw;
-        }
+        var displayVal = pd.unitType
+          ? toDisplay(raw,pd.unitType)+unitSuffix(pd.unitType)
+          : pd.type==='select' ? String(raw).replace(/_/g,' ') : raw;
         curSec.rows.push({label:pd.label, value:displayVal});
       }
     });
@@ -4332,12 +3880,11 @@ function injectStyles() {
 function buildDefaultGraph() {
   var sp = NODE_W + 80;
   var sx = 60, sy = 160;
-  // stock_in → heat → forge → heat_treat → inspect → stock_out
   var n0 = createNode('stock_in',   sx,        sy);
-  var n1 = createNode('heat',       sx+sp,     sy);
-  var n2 = createNode('forge',      sx+sp*2,   sy);
-  var n3 = createNode('heat_treat', sx+sp*3,   sy);
-  var n4 = createNode('inspect',    sx+sp*4,   sy);
+  var n1 = createNode('cut',        sx+sp,     sy);
+  var n2 = createNode('heat',       sx+sp*2,   sy);
+  var n3 = createNode('forge',      sx+sp*3,   sy);
+  var n4 = createNode('heat_treat', sx+sp*4,   sy);
   var n5 = createNode('stock_out',  sx+sp*5,   sy);
   addConnection(n0.id, n1.id);
   addConnection(n1.id, n2.id);
