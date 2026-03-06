@@ -21,8 +21,8 @@ import {
   NODE_DEFS,
   NODE_W, NODE_H, PORT_R, PORT_HIT,
   ACCENT, ACCENT_DIM,
-} from './manufacturingreview.js';
-import { toDisplay } from './manufacturingreview_inputs.js';
+  toDisplay,
+} from './manufacturingreview_defs.js';
 
 // ---------------------------------------------------------------------------
 // Injected cross-panel refresh callbacks (set once via init())

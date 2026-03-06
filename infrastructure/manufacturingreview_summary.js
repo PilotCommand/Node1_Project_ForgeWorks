@@ -17,7 +17,7 @@
 // ============================================================================
 
 import * as S from './manufacturingreview_states.js';
-import { computeChain, NODE_DEFS, ACCENT, ACCENT_DIM } from './manufacturingreview.js';
+import { computeChain, NODE_DEFS, ACCENT, ACCENT_DIM } from './manufacturingreview_defs.js';
 import { buildStepWorkings } from './manufacturingreview_estimates.js';
 import { selectNode } from './manufacturingreview_process.js';
 

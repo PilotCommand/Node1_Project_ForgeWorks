@@ -23,7 +23,7 @@ import {
   dMass, dLen, dTemp, dVol, dDensity, dLenUnit,
   NODE_DEFS, MATERIAL_CATALOG,
   ACCENT, ACCENT_DIM,
-} from './manufacturingreview.js';
+} from './manufacturingreview_defs.js';
 import { selectNode } from './manufacturingreview_process.js';
 
 // ---------------------------------------------------------------------------

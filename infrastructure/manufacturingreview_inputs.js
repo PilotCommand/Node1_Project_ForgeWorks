@@ -24,10 +24,11 @@ import {
   NODE_DEFS, MATERIAL_CATALOG,
   ACCENT, ACCENT_DIM,
   round3,
+  toDisplay, fromDisplay, unitSuffix, scaleParam,
   buildInputSection, buildTextInput, buildNumberInputEl,
   buildSelectEl, buildTextareaInput,
   fWrap, fLabel, sInput,
-} from './manufacturingreview.js';
+} from './manufacturingreview_defs.js';
 import { refreshConnections, deleteNode, deleteConn } from './manufacturingreview_process.js';
 
 // ---------------------------------------------------------------------------
@@ -193,39 +194,6 @@ function buildGeneralInputs() {
   ]));
 
   return wrap;
-}
-
-// Convert SI-stored value to display value for a given unitType
-export function toDisplay(v, unitType) {
-  if (unitType === 'length')  return S.getUnitSystem() === 'imperial' ? round3(v / 25.4) : v;
-  if (unitType === 'temp')    return S.getUnitSystem() === 'imperial' ? round3(v * 9 / 5 + 32) : v;
-  if (unitType === 'density') return S.getUnitSystem() === 'imperial' ? round3(v * 0.036127) : v;
-  return v;
-}
-export function fromDisplay(v, unitType) {
-  if (unitType === 'length')  return S.getUnitSystem() === 'imperial' ? round3(v * 25.4) : v;
-  if (unitType === 'temp')    return S.getUnitSystem() === 'imperial' ? round3((v - 32) * 5 / 9) : v;
-  if (unitType === 'density') return S.getUnitSystem() === 'imperial' ? round3(v / 0.036127) : v;
-  return v;
-}
-export function unitSuffix(unitType) {
-  if (unitType === 'length')  return S.getUnitSystem() === 'imperial' ? ' (in)'     : ' (mm)';
-  if (unitType === 'temp')    return S.getUnitSystem() === 'imperial' ? ' (°F)'    : ' (°C)';
-  if (unitType === 'density') return S.getUnitSystem() === 'imperial' ? ' (lb/in³)' : ' (g/cm³)';
-  return '';
-}
-export function scaleParam(pd) {
-  if (!pd.unitType) return { min: pd.min, max: pd.max, step: pd.step || 1 };
-  if (pd.unitType === 'length' && S.getUnitSystem() === 'imperial') {
-    return { min: round3(pd.min / 25.4), max: round3(pd.max / 25.4), step: round3((pd.step || 1) / 25.4) };
-  }
-  if (pd.unitType === 'temp' && S.getUnitSystem() === 'imperial') {
-    return { min: round3(pd.min * 9/5 + 32), max: round3(pd.max * 9/5 + 32), step: pd.step ? round3(pd.step * 9/5) : 1 };
-  }
-  if (pd.unitType === 'density' && S.getUnitSystem() === 'imperial') {
-    return { min: round3(pd.min * 0.036127), max: round3(pd.max * 0.036127), step: round3((pd.step || 0.01) * 0.036127) };
-  }
-  return { min: pd.min, max: pd.max, step: pd.step || 1 };
 }
 
 function buildNodeDetail(node) {
