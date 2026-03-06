@@ -146,18 +146,26 @@ function buildOverlay() {
 
   S.getOverlay().appendChild(buildTopBar());
 
+  // Panels are built first so we can pass their refs to handles
+  var leftPanel  = buildLeftPanel();
+  var rightPanel = buildRightPanel();
+  var calcPanel  = buildCalcPanel();
+
   // Outer vertical container: three-panel row on top, calc panel below
   var outer = document.createElement('div');
   Object.assign(outer.style, { flex: '1', display: 'flex', flexDirection: 'column', overflow: 'hidden', position: 'relative', zIndex: '2' });
 
   var body = document.createElement('div');
   Object.assign(body.style, { flex: '1', display: 'flex', flexDirection: 'row', overflow: 'hidden', minHeight: '0' });
-  body.appendChild(buildLeftPanel());
+  body.appendChild(leftPanel);
+  body.appendChild(buildPanelHandle(leftPanel,  'x', +1, 280, 120, 520));
   body.appendChild(buildCanvasPanel());
-  body.appendChild(buildRightPanel());
+  body.appendChild(buildPanelHandle(rightPanel, 'x', -1, 300, 140, 560));
+  body.appendChild(rightPanel);
   outer.appendChild(body);
 
-  outer.appendChild(buildCalcPanel());
+  outer.appendChild(buildPanelHandle(calcPanel, 'y', -1, 280, 38, 520));
+  outer.appendChild(calcPanel);
   S.getOverlay().appendChild(outer);
 
   S.getOverlay().appendChild(buildActionBar());
@@ -166,6 +174,140 @@ function buildOverlay() {
   document.addEventListener('mousemove', onMouseMove);
   document.addEventListener('mouseup',   onMouseUp);
   document.addEventListener('keydown',   onKeyDown);
+}
+
+// ---------------------------------------------------------------------------
+// Panel Resize / Collapse Handles
+//
+// axis  — 'x' for left/right side panels, 'y' for the calc panel
+// sign  — +1 if dragging positive axis grows panel, −1 if it shrinks it
+//          left panel:  sign +1  (drag right → wider)
+//          right panel: sign −1  (drag right → narrower, left → wider)
+//          calc panel:  sign −1  (drag down  → shorter,  up   → taller)
+// ---------------------------------------------------------------------------
+
+function buildPanelHandle(panel, axis, sign, defaultPx, minPx, maxPx) {
+  var isX = axis === 'x';
+
+  var handle = document.createElement('div');
+  Object.assign(handle.style, {
+    position: 'relative', flexShrink: '0',
+    width:  isX ? '6px' : '100%',
+    height: isX ? '100%' : '6px',
+    cursor: isX ? 'col-resize' : 'row-resize',
+    background: 'rgba(255,255,255,0.03)',
+    transition: 'background 0.15s ease',
+    zIndex: '5',
+    overflow: 'visible',
+  });
+  handle.addEventListener('mouseenter', function() { handle.style.background = 'rgba(255,255,255,0.08)'; });
+  handle.addEventListener('mouseleave', function() { handle.style.background = 'rgba(255,255,255,0.03)'; });
+
+  // ── Collapse arrow tab ────────────────────────────────────────────────────
+  // Arrows — calc panel open=▼ (click to collapse down), closed=▲ (click to expand up)
+  var openArrow  = isX ? (sign > 0 ? '◀' : '▶') : '▼';
+  var closeArrow = isX ? (sign > 0 ? '▶' : '◀') : '▲';
+
+  var tab = document.createElement('div');
+
+  // Positioning: flush with the canvas-facing edge, centred along the other axis
+  var tabPos = {};
+  if (isX) {
+    tabPos = sign > 0
+      ? { top: '50%', left: '100%',  transform: 'translateY(-50%)', borderRadius: '0 4px 4px 0' }
+      : { top: '50%', right: '100%', transform: 'translateY(-50%)', borderRadius: '4px 0 0 4px' };
+  } else {
+    tabPos = { left: '50%', bottom: '100%', transform: 'translateX(-50%)', borderRadius: '4px 4px 0 0' };
+  }
+
+  Object.assign(tab.style, Object.assign({
+    position: 'absolute',
+    width:  isX ? '14px' : '36px',
+    height: isX ? '36px' : '14px',
+    background: ACCENT_DIM + '0.18)',
+    border: '1px solid ' + ACCENT_DIM + '0.45)',
+    display: 'flex', alignItems: 'center', justifyContent: 'center',
+    cursor: 'pointer',
+    fontSize: '8px', color: ACCENT,
+    userSelect: 'none',
+    transition: 'background 0.15s ease, color 0.15s ease',
+    zIndex: '6',
+  }, tabPos));
+
+  tab.textContent = openArrow;
+  tab.addEventListener('mouseenter', function() {
+    tab.style.background = ACCENT_DIM + '0.35)';
+    tab.style.color = '#ffb090';
+  });
+  tab.addEventListener('mouseleave', function() {
+    tab.style.background = ACCENT_DIM + '0.18)';
+    tab.style.color = ACCENT;
+  });
+  handle.appendChild(tab);
+
+  // ── Collapse state ────────────────────────────────────────────────────────
+  var collapsed = false;
+  var savedPx   = defaultPx;
+
+  function applySize(px) {
+    if (isX) {
+      panel.style.width    = px + 'px';
+      panel.style.minWidth = px > 0 ? minPx + 'px' : '0';
+      panel.style.overflow = px < 30 ? 'hidden' : '';
+    } else {
+      panel.style.height    = px + 'px';
+      panel.style.minHeight = px > 0 ? minPx + 'px' : '0';
+      panel.style.overflow  = px < 30 ? 'hidden' : '';
+    }
+  }
+
+  tab.addEventListener('click', function(e) {
+    e.stopPropagation();
+    if (!collapsed) {
+      savedPx = isX ? panel.offsetWidth : panel.offsetHeight;
+      collapsed = true;
+      applySize(0);
+      tab.textContent = closeArrow;
+    } else {
+      collapsed = false;
+      applySize(savedPx);
+      tab.textContent = openArrow;
+    }
+  });
+
+  // ── Drag resize ───────────────────────────────────────────────────────────
+  var dragging   = false;
+  var dragOrigin = 0;
+  var sizeOrigin = 0;
+
+  handle.addEventListener('mousedown', function(e) {
+    if (e.target === tab) return;
+    e.preventDefault();
+    dragging   = true;
+    dragOrigin = isX ? e.clientX : e.clientY;
+    sizeOrigin = isX ? panel.offsetWidth : panel.offsetHeight;
+    document.body.style.cursor    = isX ? 'col-resize' : 'row-resize';
+    document.body.style.userSelect = 'none';
+  });
+
+  document.addEventListener('mousemove', function(e) {
+    if (!dragging) return;
+    var delta  = isX ? (e.clientX - dragOrigin) : (e.clientY - dragOrigin);
+    var newPx  = Math.max(minPx, Math.min(maxPx, sizeOrigin + sign * delta));
+    collapsed  = false;
+    tab.textContent = openArrow;
+    applySize(newPx);
+  });
+
+  document.addEventListener('mouseup', function() {
+    if (!dragging) return;
+    dragging = false;
+    document.body.style.cursor     = '';
+    document.body.style.userSelect = '';
+    savedPx = isX ? panel.offsetWidth : panel.offsetHeight;
+  });
+
+  return handle;
 }
 
 // ---------------------------------------------------------------------------
@@ -256,6 +398,57 @@ function buildActionBar() {
   loadBtn.addEventListener('click', loadConfig);
   bar.appendChild(saveBtn); bar.appendChild(loadBtn);
 
+  // ── Tag filter group (Information · Calculations · Directions) ────────────
+  var tagGroup = document.createElement('div');
+  Object.assign(tagGroup.style, {
+    display: 'flex', alignItems: 'center', gap: '6px',
+    background: 'rgba(255,255,255,0.04)',
+    border: '1px solid rgba(255,255,255,0.14)',
+    borderRadius: '3px', padding: '4px 12px',
+  });
+
+  function makeTagOpt(text, color, getter, setter) {
+    var lbl = document.createElement('label');
+    Object.assign(lbl.style, {
+      display: 'flex', alignItems: 'center', gap: '5px',
+      cursor: 'pointer', userSelect: 'none',
+      fontSize: '9px', letterSpacing: '1.5px', textTransform: 'uppercase',
+      color: getter() ? color : '#7a9aaa',
+      transition: 'color 0.15s ease',
+    });
+    var cb = document.createElement('input');
+    cb.type = 'checkbox';
+    cb.checked = getter();
+    Object.assign(cb.style, {
+      width: '11px', height: '11px',
+      accentColor: color, cursor: 'pointer',
+    });
+    cb.addEventListener('change', function() {
+      setter(cb.checked);
+      lbl.style.color = cb.checked ? color : '#7a9aaa';
+      refreshCalcPanel();
+    });
+    lbl.appendChild(cb);
+    lbl.appendChild(document.createTextNode(text));
+    return lbl;
+  }
+
+  function makeTagSep() {
+    var s = document.createElement('div');
+    Object.assign(s.style, {
+      width: '1px', height: '14px',
+      background: 'rgba(255,255,255,0.18)', margin: '0 4px',
+    });
+    return s;
+  }
+
+  tagGroup.appendChild(makeTagOpt('Information',  '#5ba3d9', S.getShowTagInformation, S.setShowTagInformation));
+  tagGroup.appendChild(makeTagSep());
+  tagGroup.appendChild(makeTagOpt('Calculations', '#6dbd8a', S.getShowTagCalculation, S.setShowTagCalculation));
+  tagGroup.appendChild(makeTagSep());
+  tagGroup.appendChild(makeTagOpt('Directions',   '#c9a84c', S.getShowTagDirection,   S.setShowTagDirection));
+  bar.appendChild(tagGroup);
+
   // ── Unit system toggle (centred) ─────────────────────────────────────────
   var unitToggle = document.createElement('div');
   Object.assign(unitToggle.style, {
@@ -311,8 +504,54 @@ function buildActionBar() {
   unitToggle.appendChild(makeUnitOpt('Metric', 'si'));
   bar.appendChild(unitToggle);
 
-  var sp = document.createElement('div'); sp.style.flex = '1';
-  bar.appendChild(sp);
+  var sp1 = document.createElement('div'); sp1.style.flex = '1';
+  bar.appendChild(sp1);
+
+  // ── View options group (Descriptions · Mathematics) ──────────────────────
+  var viewGroup = document.createElement('div');
+  Object.assign(viewGroup.style, {
+    display: 'flex', alignItems: 'center', gap: '6px',
+    background: 'rgba(255,255,255,0.04)',
+    border: '1px solid rgba(255,255,255,0.14)',
+    borderRadius: '3px', padding: '4px 12px',
+  });
+
+  function makeViewOpt(text, getter, setter) {
+    var lbl = document.createElement('label');
+    Object.assign(lbl.style, {
+      display: 'flex', alignItems: 'center', gap: '5px',
+      cursor: 'pointer', userSelect: 'none',
+      fontSize: '9px', letterSpacing: '1.5px', textTransform: 'uppercase',
+      color: getter() ? ACCENT : '#7a9aaa',
+      transition: 'color 0.15s ease',
+    });
+    var cb = document.createElement('input');
+    cb.type = 'checkbox';
+    cb.checked = getter();
+    Object.assign(cb.style, {
+      width: '11px', height: '11px',
+      accentColor: ACCENT, cursor: 'pointer',
+    });
+    cb.addEventListener('change', function() {
+      setter(cb.checked);
+      lbl.style.color = cb.checked ? ACCENT : '#7a9aaa';
+      refreshCalcPanel();
+    });
+    lbl.appendChild(cb);
+    lbl.appendChild(document.createTextNode(text));
+    return lbl;
+  }
+
+  var viewSep = document.createElement('div');
+  Object.assign(viewSep.style, {
+    width: '1px', height: '14px',
+    background: 'rgba(255,255,255,0.18)', margin: '0 4px',
+  });
+
+  viewGroup.appendChild(makeViewOpt('Descriptions', S.getShowDescriptions, S.setShowDescriptions));
+  viewGroup.appendChild(viewSep);
+  viewGroup.appendChild(makeViewOpt('Mathematics',  S.getShowMathematics,  S.setShowMathematics));
+  bar.appendChild(viewGroup);
 
   // ── Export dropdown ───────────────────────────────────────────────────────
   var exportWrap = document.createElement('div');
@@ -585,6 +824,38 @@ function showToast(msg) {
   }, 3500);
 }
 
+// ---------------------------------------------------------------------------
+// Export — shared filter helpers
+// Apply the current UI toggles to a workings array, returning only the
+// cells that are currently visible in the summary panel.
+// ---------------------------------------------------------------------------
+
+function exportFilterWorkings(workings) {
+  return workings.filter(function(w) {
+    var tag = w.tag || 'information';
+    if (tag === 'information' && !S.getShowTagInformation()) return false;
+    if (tag === 'direction'   && !S.getShowTagDirection())   return false;
+    if (tag === 'calculation' && !S.getShowTagCalculation()) return false;
+    return true;
+  });
+}
+
+function exportActiveFilters() {
+  var tags = [];
+  if (S.getShowTagInformation()) tags.push('Information');
+  if (S.getShowTagCalculation()) tags.push('Calculations');
+  if (S.getShowTagDirection())   tags.push('Directions');
+  return {
+    tags:         tags,
+    descriptions: S.getShowDescriptions(),
+    mathematics:  S.getShowMathematics(),
+    units:        S.getUnitSystem() === 'imperial' ? 'Imperial' : 'Metric',
+    summary:      'Tags: ' + (tags.join(', ') || 'None') +
+                  '  |  Descriptions: ' + (S.getShowDescriptions() ? 'On' : 'Off') +
+                  '  |  Mathematics: ' + (S.getShowMathematics() ? 'On' : 'Off'),
+  };
+}
+
 function printToPDF() {
   var chain = computeChain();
   if (chain.length === 0) { alert('Build a process chain first.'); return; }
@@ -597,6 +868,7 @@ function printToPDF() {
   var yieldPct  = massIn > 0 ? round3(massOut / massIn * 100) : 0;
   var unitLabel = S.getUnitSystem() === 'imperial' ? 'Imperial (in / lb / °F)' : 'Metric (mm / kg / °C)';
   var ts        = new Date().toLocaleString();
+  var filters   = exportActiveFilters();
 
   var C_sans  = "'Segoe UI','Helvetica Neue',Arial,sans-serif";
   var C_mono  = "'Consolas','SF Mono','Courier New',monospace";
@@ -666,6 +938,7 @@ function printToPDF() {
             mRow('Unit System',   unitLabel)+
             mRow('Process Steps', chain.length + ' steps')+
             mRow('Generated',     ts)+
+            mRow('View Filters',  filters.summary)+
           '</table>'+
         '</div>'+
       '</div>'+
@@ -712,7 +985,7 @@ function printToPDF() {
     var def  = NODE_DEFS[step.nodeType]||{paramDefs:[]};
     var p    = node.params||{};
     var nc   = NODE_COLORS[step.nodeType]||{bg:'#222',text:'#fff',border:'#444'};
-    var workings = buildStepWorkings(step);
+    var workings = exportFilterWorkings(buildStepWorkings(step));
 
     // Build param sections
     var paramSections = [];
@@ -755,24 +1028,35 @@ function printToPDF() {
         '</table></div>';
     }).join('');
 
-    // Calc workings
-    var calcsHTML = workings.map(function(w,wi){
+    var calcsHTML = workings.length === 0
+      ? '<div style="color:'+C_faint+';font-size:10px;padding:8px 0">No workings visible — check tag filters.</div>'
+      : workings.map(function(w,wi){
       var isInfo = w.symbolic==='—';
+      var showDesc = S.getShowDescriptions();
+      var showMath = S.getShowMathematics();
       return '<div style="border:1px solid '+C_border+';border-radius:4px;margin-bottom:10px;overflow:hidden;page-break-inside:avoid">'+
 
-        // Header row with title + number
+        // Header row with title + tag + number
         '<div style="background:#f0f4f8;padding:8px 12px;display:flex;justify-content:space-between;align-items:center;border-bottom:1px solid '+C_border+'">'+
           '<div style="font-size:10px;font-weight:700;color:'+C_ink+'">'+esc(w.title)+'</div>'+
-          '<div style="font-size:8px;color:'+C_faint+';font-family:'+C_mono+'">Calc '+(idx+1)+'.'+(wi+1)+'</div>'+
+          '<div style="display:flex;align-items:center;gap:8px">'+
+            (function(){
+              var tagCfg={information:{bg:C_bLt,color:C_blue},direction:{bg:C_yLt,color:C_gold},calculation:{bg:C_gLt,color:C_green}}[w.tag||'information']||{bg:C_bLt,color:C_blue};
+              return '<span style="font-size:7px;font-weight:700;letter-spacing:1px;text-transform:uppercase;padding:1px 6px;border-radius:2px;background:'+tagCfg.bg+';color:'+tagCfg.color+'">'+(w.tag||'information')+'</span>';
+            })()+
+            '<div style="font-size:8px;color:'+C_faint+';font-family:'+C_mono+'">'+esc((idx+1)+'.'+(wi+1))+'</div>'+
+          '</div>'+
         '</div>'+
 
-        // Description — blue callout
-        '<div style="padding:8px 12px;background:'+C_bLt+';border-bottom:1px solid '+C_bBd+';font-size:10px;color:'+C_blue+';line-height:1.5;border-left:3px solid '+C_bBd+'">'+
-          esc(w.desc)+
-        '</div>'+
+        // Description — only if descriptions toggle is on
+        (showDesc ?
+          '<div style="padding:8px 12px;background:'+C_bLt+';border-bottom:1px solid '+C_bBd+';font-size:10px;color:'+C_blue+';line-height:1.5;border-left:3px solid '+C_bBd+'">'+
+            esc(w.desc)+
+          '</div>'
+        : '') +
 
-        (!isInfo?
-          // Formula + substituted side-by-side
+        // Formula + answer — only if mathematics toggle is on
+        (!isInfo && showMath ?
           '<div style="display:grid;grid-template-columns:1fr 1fr;border-bottom:1px solid '+C_border+'">'+
             '<div style="padding:10px 12px;border-right:1px solid '+C_border+'">'+
               '<div style="font-size:7px;letter-spacing:2px;text-transform:uppercase;color:'+C_faint+';margin-bottom:6px">Symbolic Formula</div>'+
@@ -783,12 +1067,18 @@ function printToPDF() {
               '<div style="font-size:11px;font-family:'+C_mono+';color:'+C_sub+';line-height:1.6">'+esc(w.substituted)+'</div>'+
             '</div>'+
           '</div>'+
-          // Answer
           '<div style="padding:10px 14px;background:'+C_aLt+';display:flex;align-items:center;gap:14px">'+
             '<div style="font-size:7px;letter-spacing:2px;text-transform:uppercase;color:'+C_accent+';white-space:nowrap">Answer</div>'+
             '<div style="font-size:15px;font-weight:700;font-family:'+C_mono+';color:'+C_accent+'">'+esc(w.answer)+'</div>'+
           '</div>'
-        : '') +
+        : (!isInfo ?
+          // Mathematics off — show answer only
+          '<div style="padding:10px 14px;background:'+C_aLt+';display:flex;align-items:center;gap:14px">'+
+            '<div style="font-size:7px;letter-spacing:2px;text-transform:uppercase;color:'+C_accent+';white-space:nowrap">Result</div>'+
+            '<div style="font-size:15px;font-weight:700;font-family:'+C_mono+';color:'+C_accent+'">'+esc(w.answer)+'</div>'+
+          '</div>'
+        : '')) +
+
       '</div>';
     }).join('');
 
@@ -942,33 +1232,37 @@ function exportToExcel() {
   var massIn  = first.massOut;
   var massOut = last.massOut;
   var yieldPct = massIn > 0 ? round3(massOut / massIn * 100) : 0;
+  var filters = exportActiveFilters();
 
-  // Build rows: summary block + step-by-step
   var rows = [];
-  rows.push(['FORGEWORKS — MANUFACTURING REVIEW', '', '', '']);
-  rows.push(['', '', '', '']);
-  rows.push(['Job Number', S.getGeneral().jobNumber || '—', 'Customer', S.getGeneral().customer || '—']);
-  rows.push(['Engineer',   S.getGeneral().engineer  || '—', 'Date',     S.getGeneral().dateCreated || '—']);
-  rows.push(['Status',     S.getGeneral().status    || '—', 'Units',    S.getUnitSystem() === 'imperial' ? 'Imperial' : 'Metric']);
-  rows.push(['', '', '', '']);
-  rows.push(['SUMMARY', '', '', '']);
-  rows.push(['Mass In', dMass(massIn), 'Mass Out', dMass(massOut)]);
-  rows.push(['Yield', yieldPct + '%', 'Steps', chain.length]);
-  rows.push(['', '', '', '']);
-  rows.push(['STEP', 'PARAMETER', 'VALUE', 'LOSS']);
+  rows.push(['FORGEWORKS — MANUFACTURING REVIEW', '', '', '', '']);
+  rows.push(['', '', '', '', '']);
+  rows.push(['Job Number', S.getGeneral().jobNumber || '—', 'Customer', S.getGeneral().customer || '—', '']);
+  rows.push(['Engineer',   S.getGeneral().engineer  || '—', 'Date',     S.getGeneral().dateCreated || '—', '']);
+  rows.push(['Status',     S.getGeneral().status    || '—', 'Units',    filters.units, '']);
+  rows.push(['View Filters', filters.summary, '', '', '']);
+  rows.push(['', '', '', '', '']);
+  rows.push(['SUMMARY', '', '', '', '']);
+  rows.push(['Mass In', dMass(massIn), 'Mass Out', dMass(massOut), '']);
+  rows.push(['Yield', yieldPct + '%', 'Steps', chain.length, '']);
+  rows.push(['', '', '', '', '']);
+  rows.push(['STEP', 'TAG', 'WORKING', 'RESULT', 'LOSS']);
 
   chain.forEach(function(step) {
-    var firstCalc = true;
-    step.calcs.forEach(function(c) {
+    var workings = exportFilterWorkings(buildStepWorkings(step));
+    if (workings.length === 0) return;
+    var firstRow = true;
+    workings.forEach(function(w) {
       rows.push([
-        firstCalc ? step.label : '',
-        c.label,
-        c.result,
-        firstCalc && step.massLoss > 0 ? '−' + dMass(step.massLoss) + ' (' + step.lossPct + '%)' : '',
+        firstRow ? step.label : '',
+        firstRow ? (w.tag || 'information') : '',
+        w.title,
+        w.answer,
+        firstRow && step.massLoss > 0 ? '−' + dMass(step.massLoss) + ' (' + step.lossPct + '%)' : '',
       ]);
-      firstCalc = false;
+      firstRow = false;
     });
-    rows.push(['', '', '', '']);
+    rows.push(['', '', '', '', '']);
   });
 
   // SpreadsheetML XML
@@ -1008,6 +1302,7 @@ function exportToCSV() {
   var massIn  = first.massOut;
   var massOut = last.massOut;
   var yieldPct = massIn > 0 ? round3(massOut / massIn * 100) : 0;
+  var filters = exportActiveFilters();
 
   function csvRow(cells) {
     return cells.map(function(c) {
@@ -1022,23 +1317,28 @@ function exportToCSV() {
   lines.push(csvRow(['Forgeworks Manufacturing Review']));
   lines.push(csvRow(['Job', S.getGeneral().jobNumber||'', 'Customer', S.getGeneral().customer||'']));
   lines.push(csvRow(['Engineer', S.getGeneral().engineer||'', 'Date', S.getGeneral().dateCreated||'']));
-  lines.push(csvRow(['Units', S.getUnitSystem() === 'imperial' ? 'Imperial' : 'Metric']));
+  lines.push(csvRow(['Units', filters.units]));
+  lines.push(csvRow(['View Filters', filters.summary]));
   lines.push('');
   lines.push(csvRow(['SUMMARY', '', '', '']));
   lines.push(csvRow(['Mass In', dMass(massIn), 'Mass Out', dMass(massOut)]));
   lines.push(csvRow(['Yield', yieldPct + '%', 'Steps', chain.length]));
   lines.push('');
-  lines.push(csvRow(['Step', 'Parameter', 'Value', 'Loss']));
+  lines.push(csvRow(['Step', 'Tag', 'Working', 'Result', 'Loss']));
 
   chain.forEach(function(step) {
-    var firstCalc = true;
-    step.calcs.forEach(function(c) {
+    var workings = exportFilterWorkings(buildStepWorkings(step));
+    if (workings.length === 0) return;
+    var firstRow = true;
+    workings.forEach(function(w) {
       lines.push(csvRow([
-        firstCalc ? step.label : '',
-        c.label, c.result,
-        firstCalc && step.massLoss > 0 ? '-' + dMass(step.massLoss) + ' (' + step.lossPct + '%)' : '',
+        firstRow ? step.label : '',
+        firstRow ? (w.tag || 'information') : '',
+        w.title,
+        w.answer,
+        firstRow && step.massLoss > 0 ? '-' + dMass(step.massLoss) + ' (' + step.lossPct + '%)' : '',
       ]));
-      firstCalc = false;
+      firstRow = false;
     });
     lines.push('');
   });
@@ -1057,6 +1357,7 @@ function exportToTxt() {
   var massIn  = first.massOut;
   var massOut = last.massOut;
   var yieldPct = massIn > 0 ? round3(massOut / massIn * 100) : 0;
+  var filters = exportActiveFilters();
   var HR = '─'.repeat(56);
   var lines = [];
 
@@ -1067,7 +1368,8 @@ function exportToTxt() {
   lines.push('Engineer  ' + (S.getGeneral().engineer   || '—'));
   lines.push('Date      ' + (S.getGeneral().dateCreated|| '—'));
   lines.push('Status    ' + (S.getGeneral().status     || '—'));
-  lines.push('Units     ' + (S.getUnitSystem() === 'imperial' ? 'Imperial' : 'Metric'));
+  lines.push('Units     ' + filters.units);
+  lines.push('Filters   ' + filters.summary);
   lines.push(HR);
   lines.push('SUMMARY');
   lines.push('  Mass In   ' + dMass(massIn));
@@ -1077,14 +1379,20 @@ function exportToTxt() {
   lines.push(HR);
 
   chain.forEach(function(step, i) {
+    var workings = exportFilterWorkings(buildStepWorkings(step));
+    if (workings.length === 0) return;
     lines.push((i + 1) + '.  ' + step.label.toUpperCase());
     if (step.massLoss > 0) {
       lines.push('    Loss  −' + dMass(step.massLoss) + '  (' + step.lossPct + '%)');
     }
-    step.calcs.forEach(function(c) {
-      var pad = '    ' + c.label;
-      while (pad.length < 28) pad += ' ';
-      lines.push(pad + c.result);
+    workings.forEach(function(w) {
+      var pad = '    [' + (w.tag||'info').slice(0,4).toUpperCase() + ']  ' + w.title;
+      while (pad.length < 36) pad += ' ';
+      lines.push(pad + w.answer);
+      if (S.getShowMathematics() && w.symbolic !== '—') {
+        lines.push('           = ' + w.symbolic);
+        lines.push('           = ' + w.substituted);
+      }
     });
     lines.push('');
   });

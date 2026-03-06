@@ -204,6 +204,12 @@ export function refreshCalcPanel() {
     });
 
     workings.forEach(function(w, wi) {
+      // Skip this working cell if its tag category is currently filtered out
+      var tag = w.tag || 'information';
+      if (tag === 'information' && !S.getShowTagInformation()) return;
+      if (tag === 'direction'   && !S.getShowTagDirection())   return;
+      if (tag === 'calculation' && !S.getShowTagCalculation()) return;
+
       var cell = document.createElement('div');
       Object.assign(cell.style, {
         minWidth: '200px', flex: '1',
@@ -248,11 +254,12 @@ export function refreshCalcPanel() {
       wTitleRow.appendChild(wTitle);
       wTitleRow.appendChild(tagPill);
 
-      // Description
+      // Description (hidden when user disables descriptions toggle)
       var wDesc = document.createElement('div');
       Object.assign(wDesc.style, {
         fontSize: '9px', color: '#7a9aaa', lineHeight: '1.4',
         marginBottom: '6px',
+        display: S.getShowDescriptions() ? 'block' : 'none',
       });
       wDesc.textContent = w.desc;
 
@@ -262,6 +269,7 @@ export function refreshCalcPanel() {
         fontSize: '10px', color: '#8aa0b0',
         fontFamily: "'Consolas','SF Mono',monospace",
         letterSpacing: '0.3px', lineHeight: '1.5',
+        display: S.getShowMathematics() ? 'block' : 'none',
       });
       wSym.textContent = w.symbolic;
 
@@ -271,6 +279,7 @@ export function refreshCalcPanel() {
         fontSize: '10px', color: '#a0b8c8',
         fontFamily: "'Consolas','SF Mono',monospace",
         letterSpacing: '0.3px', lineHeight: '1.5',
+        display: S.getShowMathematics() ? 'block' : 'none',
       });
       wSub.textContent = w.substituted;
 
@@ -279,6 +288,7 @@ export function refreshCalcPanel() {
       Object.assign(divLine.style, {
         height: '1px', background: 'rgba(255,255,255,0.18)',
         margin: '5px 0',
+        display: S.getShowMathematics() ? 'block' : 'none',
       });
 
       // Answer

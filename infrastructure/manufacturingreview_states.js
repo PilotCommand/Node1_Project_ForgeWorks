@@ -269,3 +269,38 @@ export function resetGeneral() {
   _general.condition   = 'annealed';
   _general.density     = 7.85;
 }
+
+// ============================================================================
+// UI PREFERENCES — DESCRIPTIONS TOGGLE
+// Controls whether description text is shown in each Summary working cell.
+// Default true (on) — useful for new users; power users can turn it off.
+// ============================================================================
+
+var _showDescriptions = true;
+
+export function getShowDescriptions()    { return _showDescriptions; }
+export function setShowDescriptions(v)   { _showDescriptions = v; }
+
+var _showMathematics = true;
+
+export function getShowMathematics()     { return _showMathematics; }
+export function setShowMathematics(v)    { _showMathematics = v; }
+
+// ============================================================================
+// UI PREFERENCES — TAG FILTERS
+// Controls which tag categories appear in the summary panel workings grid.
+// All on by default. Disabling a tag removes every working cell with that tag.
+// ============================================================================
+
+var _showTagInformation = true;
+var _showTagDirection   = true;
+var _showTagCalculation = true;
+
+export function getShowTagInformation()    { return _showTagInformation; }
+export function setShowTagInformation(v)   { _showTagInformation = v; }
+
+export function getShowTagDirection()      { return _showTagDirection; }
+export function setShowTagDirection(v)     { _showTagDirection = v; }
+
+export function getShowTagCalculation()    { return _showTagCalculation; }
+export function setShowTagCalculation(v)   { _showTagCalculation = v; }
