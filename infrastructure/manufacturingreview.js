@@ -97,20 +97,40 @@ function setUnitSystem(sys) {
 // ===========================================================================
 
 function refreshStatusBadge() {
-  var el = document.getElementById('mr-g-status-badge');
+  var el    = document.getElementById('mr-g-status-badge');
+  var val   = document.getElementById('mr-strip-do-value');
   if (!el) return;
-  var colors = {
-    draft:    { bg: 'rgba(255,255,255,0.06)', color: '#99aacc', border: 'rgba(255,255,255,0.20)' },
-    review:   { bg: 'rgba(233,196,106,0.10)', color: '#e9c46a', border: 'rgba(233,196,106,0.35)' },
-    approved: { bg: 'rgba(80,200,120,0.10)',  color: '#50d080', border: 'rgba(80,200,120,0.35)'  },
-    released: { bg: 'rgba(80,160,255,0.10)',  color: '#60b0ff', border: 'rgba(80,160,255,0.35)'  },
-    obsolete: { bg: 'rgba(160,80,80,0.10)',   color: '#cc8888', border: 'rgba(160,80,80,0.35)'   },
-  };
-  var c = colors[S.getGeneral().status] || colors.draft;
-  el.textContent = S.getGeneral().status.toUpperCase();
-  el.style.background = c.bg;
-  el.style.color = c.color;
-  el.style.borderColor = c.border;
+
+  var activeId = S.getActiveOrderId();
+  var order    = activeId ? S.findOrder(function(o) { return o.id === activeId; }) : null;
+
+  if (val) val.textContent = (order && order.doNumber) ? '\u00a0' + order.doNumber : '';
+
+  if (!order) {
+    el.textContent        = 'NO ORDER';
+    el.style.background   = 'rgba(255,255,255,0.03)';
+    el.style.color        = '#3a5060';
+    el.style.borderColor  = 'rgba(255,255,255,0.08)';
+    return;
+  }
+
+  // Right badge — file state of the active order
+  if (order.isExample) {
+    el.textContent       = 'EXAMPLE';
+    el.style.background  = 'rgba(46,196,182,0.08)';
+    el.style.color       = '#2ec4b6';
+    el.style.borderColor = 'rgba(46,196,182,0.5)';
+  } else if (order.fileHandle || order.filename) {
+    el.textContent       = 'SAVED';
+    el.style.background  = 'rgba(80,208,128,0.06)';
+    el.style.color       = '#50d080';
+    el.style.borderColor = 'rgba(80,208,128,0.5)';
+  } else {
+    el.textContent       = 'DRAFT';
+    el.style.background  = 'rgba(233,196,106,0.08)';
+    el.style.color       = '#e9c46a';
+    el.style.borderColor = 'rgba(233,196,106,0.5)';
+  }
 }
 
 function buildOverlay() {
@@ -763,6 +783,7 @@ function saveActiveOrder() {
       }
       S.setIsDirty(false);
       refreshOrdersPanel();
+      refreshStatusBadge();
       showToast('Saved — ' + filename);
     })
     .catch(function(err) {
@@ -825,6 +846,8 @@ function applyOrderToState(order) {
   S.setNodes([]);
   S.setConnections([]);
 
+  // Reset general to blank defaults first, then overlay saved fields if they exist
+  S.resetGeneral();
   if (order.general) S.patchGeneral(order.general);
   S.setNid(order.nid || 0);
   S.setCid(order.cid || 0);
@@ -843,10 +866,6 @@ function applyOrderToState(order) {
   refreshStatusBadge();
   S.resetViewport();
   applyWorldTransform();
-
-  // Sync the status strip DO number
-  var strip = document.getElementById('mr-strip-job');
-  if (strip) strip.textContent = S.getGeneral().doNumber || '—';
 
   refreshCanvasOverlay();
 }

@@ -112,10 +112,22 @@ export function buildLeftPanel() {
     borderBottom: '1px solid rgba(255,255,255,0.08)',
     background: 'rgba(0,0,0,0.2)',
   });
+
+  // Left side: fixed "Delivery Order : " prefix + dynamic DO number value
   var jobLabel = document.createElement('div');
-  Object.assign(jobLabel.style, { fontSize: '9px', color: '#7a9aaa', letterSpacing: '0.5px' });
-  jobLabel.id = 'mr-strip-job';
-  jobLabel.textContent = S.getGeneral().doNumber || '—';
+  Object.assign(jobLabel.style, {
+    fontSize: '9px', color: '#7a9aaa', letterSpacing: '0.5px',
+    display: 'flex', alignItems: 'center', gap: '0',
+    overflow: 'hidden', whiteSpace: 'nowrap',
+  });
+  var jobPrefix = document.createElement('span');
+  jobPrefix.textContent = 'Delivery Order:';
+  var jobValue = document.createElement('span');
+  jobValue.id = 'mr-strip-do-value';
+  jobValue.textContent = '';
+  jobLabel.appendChild(jobPrefix);
+  jobLabel.appendChild(jobValue);
+
   var statusBadge = document.createElement('div');
   statusBadge.id = 'mr-g-status-badge';
   Object.assign(statusBadge.style, {
@@ -225,8 +237,8 @@ function buildGeneralInputs() {
     buildTextInput('DO Number',   'mr-g-do',   S.getGeneral().doNumber,   function(v) {
       S.getGeneral().doNumber = v;
       S.setIsDirty(true);
-      var s = document.getElementById('mr-strip-job');
-      if (s) s.textContent = v || '—';
+      var val = document.getElementById('mr-strip-do-value');
+      if (val) val.textContent = v ? '\u00a0' + v : '';
     }),
     buildTextInput('Part Number', 'mr-g-pn',   S.getGeneral().partNumber, function(v) { S.getGeneral().partNumber = v; S.setIsDirty(true); }),
     buildTextInput('Part Name',   'mr-g-pname',S.getGeneral().partName,   function(v) { S.getGeneral().partName   = v; S.setIsDirty(true); }),
@@ -885,7 +897,7 @@ function buildOrderActionRow() {
       id:          S.nextOid(),
       filename:    null,
       fileHandle:  null,
-      doNumber:    'DO-' + today,
+      doNumber:    '',
       partNumber:  '',
       partName:    '',
       customer:    '',
@@ -938,6 +950,7 @@ function buildOrderActionRow() {
 
     refreshConnections();
     refreshCanvasOverlay();
+    _refreshStatusBadge();
     _refreshRightPanel();
     _refreshCalcPanel();
     refreshLeftPanel();   // re-renders Orders tab and re-locks General/Node/Path
@@ -974,6 +987,7 @@ function buildOrderActionRow() {
       S.setIsDirty(false);
       refreshConnections();
       refreshCanvasOverlay();
+      _refreshStatusBadge();
       _refreshRightPanel();
       _refreshCalcPanel();
     }

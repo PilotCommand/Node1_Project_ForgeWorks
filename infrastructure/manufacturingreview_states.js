@@ -258,10 +258,10 @@ export function patchGeneral(obj) {
 
 // Full reset back to defaults — used when clearing a session.
 export function resetGeneral() {
-  _general.doNumber    = 'DO-001';
+  _general.doNumber    = '';
   _general.partNumber  = '';
   _general.partName    = '';
-  _general.revision    = 'A';
+  _general.revision    = '';
   _general.customer    = '';
   _general.engineer    = '';
   _general.dateCreated = new Date().toISOString().slice(0, 10);
