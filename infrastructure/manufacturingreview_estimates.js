@@ -62,8 +62,8 @@ export function showRightPlaceholder() {
   if (!content) return;
   content.innerHTML = '';
   var ph = document.createElement('div');
-  Object.assign(ph.style, { color: '#607888', fontSize: '10px', textAlign: 'center', marginTop: '40px', lineHeight: '1.8' });
-  ph.textContent = 'Connect a Stock In node to begin';
+  Object.assign(ph.style, { color: '#3a5060', fontSize: '10px', textAlign: 'center', marginTop: '40px', lineHeight: '1.8', whiteSpace: 'pre-line' });
+  ph.textContent = 'Connect a Stock In node\nto begin.';
   content.appendChild(ph);
 }
 
@@ -695,6 +695,14 @@ export function refreshRightPanel() {
   var content = document.getElementById('mr-right-content');
   if (!content) return;
   content.innerHTML = '';
+
+  if (!S.getActiveOrderId()) {
+    var locked = document.createElement('div');
+    Object.assign(locked.style, { color: '#3a5060', fontSize: '10px', textAlign: 'center', marginTop: '40px', lineHeight: '2.0', whiteSpace: 'pre-line' });
+    locked.textContent = 'Open a delivery order\nto see estimates.';
+    content.appendChild(locked);
+    return;
+  }
 
   var chain = computeChain();
   if (chain.length === 0) { showRightPlaceholder(); return; }

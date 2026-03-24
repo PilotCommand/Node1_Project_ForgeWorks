@@ -11,9 +11,12 @@
 // Imports:  manufacturingreview_states.js (S)
 //           manufacturingreview.js (NODE_DEFS, constants, ACCENT*)
 // Exports:  init(), buildCanvasPanel(), applyWorldTransform(), resetView()
-//           createNode(), refreshNodeEl(), removeNodeEl()
+//           refreshCanvasOverlay()
+//           createNode(), refreshNodeEl(), removeNodeEl(), renderNodeEl()
 //           selectNode(), deleteNode()
-//           addConnection(), refreshConnections()
+//           addConnection(), selectConn(), deleteConn(), refreshConnections()
+//           dismissContextMenu()
+//           onMouseMove, onMouseUp, onKeyDown
 // ============================================================================
 
 import * as S from './manufacturingreview_states.js';
@@ -91,6 +94,26 @@ export function buildCanvasPanel() {
   panel.addEventListener('mousedown',   onCanvasMouseDown);
   panel.addEventListener('wheel',       onCanvasWheel, { passive: false });
 
+  // Locked overlay — shown when no delivery order is active
+  var lockOverlay = document.createElement('div');
+  lockOverlay.id = 'mr-canvas-lock';
+  Object.assign(lockOverlay.style, {
+    position: 'absolute', top: '0', left: '0', width: '100%', height: '100%',
+    display: S.getActiveOrderId() ? 'none' : 'flex',
+    flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
+    zIndex: '4',   // below panel handle tabs (z-index 5/6) so they stay clickable
+    pointerEvents: 'all',
+    background: 'rgba(6,11,17,0.72)',
+  });
+  var lockMsg = document.createElement('div');
+  Object.assign(lockMsg.style, {
+    color: '#3a5060', fontSize: '11px', letterSpacing: '1.5px',
+    textAlign: 'center', lineHeight: '2.2', whiteSpace: 'pre-line',
+  });
+  lockMsg.textContent = 'Open a delivery order\nto begin editing.';
+  lockOverlay.appendChild(lockMsg);
+  panel.appendChild(lockOverlay);
+
   S.setCanvasArea(panel);
   return panel;
 }
@@ -102,6 +125,14 @@ export function applyWorldTransform() {
     S.getCanvasArea().style.backgroundPosition = (S.getPanX() % 28) + 'px ' + (S.getPanY() % 28) + 'px';
   }
   updateZoomIndicator();
+}
+
+// Shows or hides the canvas lock overlay based on whether a DO is active.
+// Call this whenever the active order changes.
+export function refreshCanvasOverlay() {
+  var overlay = document.getElementById('mr-canvas-lock');
+  if (!overlay) return;
+  overlay.style.display = S.getActiveOrderId() ? 'none' : 'flex';
 }
 
 export function updateZoomIndicator() {
@@ -661,6 +692,7 @@ export function dismissContextMenu() {
 
 function onCanvasContextMenu(e) {
   e.preventDefault();
+  if (!S.getActiveOrderId()) return;   // no DO open — block node creation
   var pos = getCanvasPos(e);
   var cx = pos.x - NODE_W / 2;
   var cy = pos.y - NODE_H / 2;
@@ -796,6 +828,7 @@ export function onMouseUp(e) {
 
 export function onKeyDown(e) {
   if (!S.isVisible()) return;
+  if (!S.getActiveOrderId()) return;   // no DO open — block all keyboard shortcuts
   if ((e.code === 'Delete' || e.code === 'Backspace') && document.activeElement && document.activeElement.tagName !== 'INPUT' && document.activeElement.tagName !== 'TEXTAREA') {
     if (S.getSelectedId())     deleteNode(S.getSelectedId());
     if (S.getSelectedConnId()) deleteConn(S.getSelectedConnId());

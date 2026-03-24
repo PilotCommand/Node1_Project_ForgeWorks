@@ -22,7 +22,9 @@
 //   Interaction          — dragState
 //   Viewport             — panX, panY, zoom
 //   Unit system          — unitSystem
-//   Job data             — general {}
+//   Delivery order data  — general {}
+//   Orders list          — orders[], activeOrderId, selectedOrderId, isDirty, _oid
+//   Working folder       — workingFolderHandle
 // ============================================================================
 
 
@@ -139,7 +141,7 @@ export function nextCid()              { return _cid++; }   // returns current v
 
 var _selectedId     = null;
 var _selectedConnId = null;
-var _leftMode       = 'general';   // 'general' | 'node_detail' | 'path'
+var _leftMode       = 'orders';    // 'orders' | 'general' | 'node_detail' | 'path'
 
 export function getSelectedId()        { return _selectedId; }
 export function setSelectedId(v)       { _selectedId = v; }
@@ -219,18 +221,18 @@ export function setUnitSystem(v)       { _unitSystem = v; }
 
 
 // ============================================================================
-// JOB DATA — GENERAL
-// Logistical and material fields for the current job. Populated by the
-// General tab of the left panel. Used by the calc engine and all exports.
+// DELIVERY ORDER DATA — GENERAL
+// Logistical and material fields for the current delivery order. Populated by
+// the General tab of the left panel. Used by the calc engine and all exports.
 //
 // getGeneral() returns the live object reference — callers mutate fields
-// directly (e.g. getGeneral().jobNumber = v). Use patchGeneral() when
+// directly (e.g. getGeneral().doNumber = v). Use patchGeneral() when
 // merging a saved payload back in (e.g. loadConfig).
 // ============================================================================
 
 var _general = {
   // Document
-  jobNumber:   'JOB-001',
+  doNumber:    'DO-001',
   partNumber:  '',
   partName:    '',
   revision:    'A',
@@ -256,7 +258,7 @@ export function patchGeneral(obj) {
 
 // Full reset back to defaults — used when clearing a session.
 export function resetGeneral() {
-  _general.jobNumber   = 'JOB-001';
+  _general.doNumber    = 'DO-001';
   _general.partNumber  = '';
   _general.partName    = '';
   _general.revision    = 'A';
@@ -304,3 +306,77 @@ export function setShowTagDirection(v)     { _showTagDirection = v; }
 
 export function getShowTagCalculation()    { return _showTagCalculation; }
 export function setShowTagCalculation(v)   { _showTagCalculation = v; }
+
+
+// ============================================================================
+// ORDERS LIST
+// _orders — array of order objects known to the Orders panel.
+//
+// Two shapes depending on whether the order has been opened:
+//
+//   Unloaded (scanned from folder, not yet opened):
+//   {
+//     id, filename, fileHandle,
+//     doNumber, partNumber, partName, customer, status, dateCreated,
+//     loaded: false
+//   }
+//
+//   Loaded (has been opened into the editor at least once):
+//   {
+//     id, filename, fileHandle,
+//     doNumber, partNumber, partName, customer, status, dateCreated,
+//     loaded: true,
+//     general: {...}, nodes: [...], connections: [...], nid, cid,
+//     isDirty: false
+//   }
+//
+// The currently active order's live edits always live in the main _general /
+// _nodes / _connections state above. Before switching orders, callers must
+// serialize the working copy back into the active order's slot here.
+// ============================================================================
+
+var _orders = [];
+
+export function getOrders()              { return _orders; }
+export function setOrders(v)             { _orders = v; }
+export function pushOrder(order)         { _orders.push(order); }
+export function findOrder(predicate)     { return _orders.find(predicate) || null; }
+export function filterOrders(predicate)  { _orders = _orders.filter(predicate); }
+
+// _activeOrderId — id of the order currently loaded into the canvas editor, or null.
+var _activeOrderId = null;
+
+export function getActiveOrderId()       { return _activeOrderId; }
+export function setActiveOrderId(v)      { _activeOrderId = v; }
+
+// _selectedOrderId — id of the order highlighted in the Orders list (single-click).
+// NOT the same as active. Single-click = highlight only. Open button = activate.
+var _selectedOrderId = null;
+
+export function getSelectedOrderId()     { return _selectedOrderId; }
+export function setSelectedOrderId(v)    { _selectedOrderId = v; }
+
+// _isDirty — true when the active order has changes not yet saved to disk.
+var _isDirty = false;
+
+export function getIsDirty()             { return _isDirty; }
+export function setIsDirty(v)            { _isDirty = v; }
+
+// _oid — monotonically increasing counter for in-memory order IDs.
+// These IDs are never persisted to JSON — they are session-only handles.
+var _oid = 0;
+
+export function nextOid()                { return 'order_' + (_oid++); }
+
+
+// ============================================================================
+// WORKING FOLDER
+// The FileSystemDirectoryHandle selected by the user via the folder picker.
+// Null until the user picks a folder or a previous handle is restored from
+// IndexedDB by manufacturingreview_deliveryorder.restoreWorkingFolder().
+// ============================================================================
+
+var _workingFolderHandle = null;
+
+export function getWorkingFolderHandle()  { return _workingFolderHandle; }
+export function setWorkingFolderHandle(v) { _workingFolderHandle = v; }

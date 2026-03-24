@@ -47,8 +47,10 @@ import {
   applyWorldTransform,
   resetView,
   createNode,
+  renderNodeEl,
   refreshNodeEl,
   removeNodeEl,
+  refreshCanvasOverlay,
   selectNode,
   deleteNode,
   setNodeSelected,
@@ -75,7 +77,9 @@ import {
   init           as initInputs,
   buildLeftPanel,
   refreshLeftPanel,
+  refreshOrdersPanel,
 } from './manufacturingreview_inputs.js';
+import * as FS from './manufacturingreview_deliveryorder.js';
 
 
 function setUnitSystem(sys) {
@@ -125,7 +129,46 @@ function buildOverlay() {
     refreshCalcPanel:   refreshCalcPanel,
     refreshNodeEl:      refreshNodeEl,
     refreshStatusBadge: refreshStatusBadge,
+    openOrder:          openOrder,
+    saveActiveOrder:    saveActiveOrder,
   });
+
+  // Add the permanent example delivery order (always first in the list).
+  // Only added once — guard prevents duplication if buildOverlay is somehow
+  // called again after a partial teardown.
+  if (!S.findOrder(function(o) { return o.isExample; })) {
+    S.pushOrder(buildExampleOrder());
+  }
+
+  // Attempt to restore the previously selected working folder (async, non-blocking).
+  // On success, scans the folder and populates the Orders list.
+  if (FS.isSupported()) {
+    FS.restoreWorkingFolder().then(function(handle) {
+      if (!handle) return null;
+      S.setWorkingFolderHandle(handle);
+      return FS.scanFolder(handle);
+    }).then(function(results) {
+      if (!results) return;
+      results.forEach(function(r) {
+        S.pushOrder({
+          id:          S.nextOid(),
+          filename:    r.filename,
+          fileHandle:  r.fileHandle,
+          doNumber:    r.doNumber,
+          partNumber:  r.partNumber,
+          partName:    r.partName,
+          customer:    r.customer,
+          status:      r.status,
+          dateCreated: r.dateCreated,
+          version:     r.version,
+          loaded:      false,
+        });
+      });
+      refreshOrdersPanel();
+    }).catch(function() {
+      // Permission denied or no saved folder — silent, user will pick manually
+    });
+  }
 
   S.setOverlay(document.createElement('div'));
   S.getOverlay().id = 'forgeworks-mfg-review';
@@ -392,10 +435,10 @@ function buildActionBar() {
     background: 'rgba(4,8,14,0.85)', gap: '10px',
   });
 
-  var saveBtn  = makeBarButton('Save Config', '↓');
-  var loadBtn  = makeBarButton('Load Config', '↑');
-  saveBtn.addEventListener('click', saveConfig);
-  loadBtn.addEventListener('click', loadConfig);
+  var saveBtn  = makeBarButton('Save Order',  '↓');
+  var loadBtn  = makeBarButton('Import JSON', '↑');
+  saveBtn.addEventListener('click', saveActiveOrder);
+  loadBtn.addEventListener('click', importJson);
   bar.appendChild(saveBtn); bar.appendChild(loadBtn);
 
   // ── Tag filter group (Information · Calculations · Directions) ────────────
@@ -645,49 +688,228 @@ function styleBarBtn(btn) {
 }
 
 
-export var SAVE_VERSION = '3.0';
+export var SAVE_VERSION = '4.0';
 
-function saveConfig() {
-  // Deep-copy nodes so we store clean plain objects (no DOM refs)
+// ---------------------------------------------------------------------------
+// Build the canonical save payload from current state
+// ---------------------------------------------------------------------------
+
+function buildSavePayload() {
   var nodeSnapshot = S.getNodes().map(function(n) {
     return { id: n.id, type: n.type, label: n.label, x: n.x, y: n.y,
              params: JSON.parse(JSON.stringify(n.params || {})) };
   });
-
-  var payload = {
-    _version:     SAVE_VERSION,
-    _type:        'forgeworks-mfg-review',
-    _savedAt:     new Date().toISOString(),
-    _unitSystem:  S.getUnitSystem(),
-    _nid: S.getNid(),
-    _cid: S.getCid(),
-    general:      JSON.parse(JSON.stringify(S.getGeneral())),
-    nodes:        nodeSnapshot,
-    connections:  JSON.parse(JSON.stringify(S.getConnections())),
+  return {
+    _version:    SAVE_VERSION,
+    _type:       'forgeworks-mfg-review',
+    _savedAt:    new Date().toISOString(),
+    _unitSystem: S.getUnitSystem(),
+    _nid:        S.getNid(),
+    _cid:        S.getCid(),
+    general:     JSON.parse(JSON.stringify(S.getGeneral())),
+    nodes:       nodeSnapshot,
+    connections: JSON.parse(JSON.stringify(S.getConnections())),
   };
+}
 
+// ---------------------------------------------------------------------------
+// downloadOrderJson — fallback: triggers a browser file download
+// ---------------------------------------------------------------------------
+
+function downloadOrderJson(payload) {
   var json = JSON.stringify(payload, null, 2);
   var blob = new Blob([json], { type: 'application/json' });
   var url  = URL.createObjectURL(blob);
   var a    = document.createElement('a');
-
-  // Use job number + part number in filename if available
-  var nameParts = ['mfg-review'];
-  if (S.getGeneral().jobNumber)  nameParts.push(S.getGeneral().jobNumber.replace(/[^a-zA-Z0-9\-_]/g, '-'));
-  if (S.getGeneral().partNumber) nameParts.push(S.getGeneral().partNumber.replace(/[^a-zA-Z0-9\-_]/g, '-'));
-  nameParts.push(new Date().toISOString().slice(0,10));
-  a.download = nameParts.join('_') + '.json';
-
+  a.download = FS.buildOrderFilename(S.getGeneral());
   a.href = url;
   document.body.appendChild(a);
   a.click();
   document.body.removeChild(a);
   URL.revokeObjectURL(url);
-
-  showToast('Config saved — ' + a.download);
+  showToast('Downloaded — ' + a.download);
 }
 
-function loadConfig() {
+// ---------------------------------------------------------------------------
+// saveActiveOrder — primary save: writes to folder if available, else download
+// ---------------------------------------------------------------------------
+
+function saveActiveOrder() {
+  var payload    = buildSavePayload();
+  var activeId   = S.getActiveOrderId();
+  var folderHandle = S.getWorkingFolderHandle();
+
+  if (!folderHandle) {
+    downloadOrderJson(payload);
+    showToast('Saved as download.\nSelect a working folder in the Orders tab to save directly to disk.');
+    return;
+  }
+
+  var order    = activeId ? S.findOrder(function(o) { return o.id === activeId; }) : null;
+  var filename = (order && order.filename) ? order.filename : FS.buildOrderFilename(S.getGeneral());
+
+  FS.saveOrderToFolder(folderHandle, filename, payload, order && order.filename ? { forceOverwrite: true } : {})
+    .then(function(fileHandle) {
+      if (order) {
+        order.fileHandle = fileHandle;
+        order.filename   = filename;
+        order.loaded     = true;
+        order.isDirty    = false;
+        // Keep summary metadata in sync
+        order.doNumber    = S.getGeneral().doNumber;
+        order.partNumber  = S.getGeneral().partNumber;
+        order.partName    = S.getGeneral().partName;
+        order.status      = S.getGeneral().status;
+      }
+      S.setIsDirty(false);
+      refreshOrdersPanel();
+      showToast('Saved — ' + filename);
+    })
+    .catch(function(err) {
+      showToast('Save failed: ' + err.message + '\nFalling back to download.');
+      downloadOrderJson(payload);
+    });
+}
+
+// ---------------------------------------------------------------------------
+// openOrder — serialize current, load target, refresh all panels
+// ---------------------------------------------------------------------------
+
+function openOrder(orderId) {
+  // 1. Serialize the currently active order back to its slot
+  var currentId = S.getActiveOrderId();
+  if (currentId) {
+    var currentSlot = S.findOrder(function(o) { return o.id === currentId; });
+    if (currentSlot) {
+      currentSlot.general     = JSON.parse(JSON.stringify(S.getGeneral()));
+      currentSlot.nodes       = JSON.parse(JSON.stringify(S.getNodes()));
+      currentSlot.connections = JSON.parse(JSON.stringify(S.getConnections()));
+      currentSlot.nid         = S.getNid();
+      currentSlot.cid         = S.getCid();
+      currentSlot.loaded      = true;
+      currentSlot.isDirty     = S.getIsDirty();
+    }
+  }
+
+  var order = S.findOrder(function(o) { return o.id === orderId; });
+  if (!order) return;
+
+  // 2. If not yet fully loaded from disk, read the file now
+  if (!order.loaded && order.fileHandle) {
+    S.setActiveOrderId(orderId);   // set early so guards see correct state
+    FS.readOrderFile(order.fileHandle)
+      .then(function(payload) {
+        applyPayloadToState(payload);
+        order.loaded = true;
+        S.setIsDirty(false);
+        refreshOrdersPanel();
+      })
+      .catch(function(err) {
+        S.setActiveOrderId(currentId || null);  // roll back on failure
+        showToast('Failed to open order: ' + err.message);
+      });
+    return;
+  }
+
+  // 3. Already loaded in memory — apply directly
+  S.setActiveOrderId(orderId);   // set early so all refresh guards see correct state
+  applyOrderToState(order);
+  S.setIsDirty(false);
+  refreshOrdersPanel();
+}
+
+// Apply a fully loaded order object (from memory) into the live state
+function applyOrderToState(order) {
+  // Clear existing canvas nodes
+  S.getNodes().forEach(function(n) { removeNodeEl(n.id); });
+  S.setNodes([]);
+  S.setConnections([]);
+
+  if (order.general) S.patchGeneral(order.general);
+  S.setNid(order.nid || 0);
+  S.setCid(order.cid || 0);
+
+  (order.nodes || []).forEach(function(nd) {
+    S.pushNode(nd);
+    renderNodeEl(nd);
+  });
+
+  S.setConnections(JSON.parse(JSON.stringify(order.connections || [])));
+
+  refreshConnections();
+  refreshLeftPanel();
+  refreshRightPanel();
+  refreshCalcPanel();
+  refreshStatusBadge();
+  S.resetViewport();
+  applyWorldTransform();
+
+  // Sync the status strip DO number
+  var strip = document.getElementById('mr-strip-job');
+  if (strip) strip.textContent = S.getGeneral().doNumber || '—';
+
+  refreshCanvasOverlay();
+}
+
+// Apply a raw JSON payload (from file read) into the live state — with migration
+function applyPayloadToState(payload) {
+  var warnings = [];
+
+  // jobNumber → doNumber migration for v3.0 files
+  if (payload.general && payload.general.jobNumber && !payload.general.doNumber) {
+    payload.general.doNumber = payload.general.jobNumber;
+  }
+
+  S.resetGeneral();
+  if (payload.general) S.patchGeneral(payload.general);
+
+  if (payload._unitSystem === 'si' || payload._unitSystem === 'imperial') {
+    S.setUnitSystem(payload._unitSystem);
+    setDisplaySystem(S.getUnitSystem());
+    ['si', 'imperial'].forEach(function(v) {
+      var lbl = document.getElementById('mr-unit-label-' + v);
+      if (lbl) lbl.style.color = S.getUnitSystem() === v ? ACCENT : '#7a9aaa';
+      var rb = document.querySelector('input[name="mr-unit-system"][value="' + v + '"]');
+      if (rb) rb.checked = S.getUnitSystem() === v;
+    });
+  }
+
+  S.getNodes().forEach(function(n) { removeNodeEl(n.id); });
+  S.setNodes([]);
+  S.setConnections([]);
+  S.setNid(payload._nid || 0);
+  S.setCid(payload._cid || 0);
+
+  (payload.nodes || []).forEach(function(nd) {
+    var def = NODE_DEFS[nd.type];
+    if (!def) { warnings.push('Unknown node type "' + nd.type + '" — skipped.'); return; }
+    var migratedParams = JSON.parse(JSON.stringify(def.defaultParams || {}));
+    if (nd.params) Object.keys(nd.params).forEach(function(k) { migratedParams[k] = nd.params[k]; });
+    var node = { id: nd.id, type: nd.type, label: nd.label || def.label,
+                 x: nd.x || 100, y: nd.y || 100, params: migratedParams };
+    S.pushNode(node);
+    renderNodeEl(node);
+  });
+
+  var validNodeIds = S.getNodes().map(function(n) { return n.id; });
+  S.setConnections((payload.connections || []).filter(function(c) {
+    var ok = validNodeIds.indexOf(c.fromId) > -1 && validNodeIds.indexOf(c.toId) > -1;
+    if (!ok) warnings.push('Connection ' + c.id + ' references missing node — removed.');
+    return ok;
+  }));
+
+  refreshConnections();
+  refreshLeftPanel();
+  refreshRightPanel();
+  refreshCalcPanel();
+  refreshStatusBadge();
+  S.resetViewport();
+  applyWorldTransform();
+
+  if (warnings.length > 0) showToast('Warnings:\n' + warnings.join('\n'));
+}
+
+function importJson() {
   var fi = document.createElement('input');
   fi.type = 'file'; fi.accept = '.json';
   fi.addEventListener('change', function(e) {
@@ -704,94 +926,48 @@ function loadConfig() {
           return;
         }
 
-        var fileVer = parseFloat(p._version || '1.0');
-        var warnings = [];
-
-        // ── General panel ─────────────────────────────────────────────────
-        // Merge saved general into current defaults so new fields always exist
-        Object.keys(S.getGeneral()).forEach(function(k) {
-          if (p.general && p.general[k] !== undefined) S.getGeneral()[k] = p.general[k];
-        });
-        // Also pick up any keys in the saved file that we might not have defaulted
-        if (p.general) S.patchGeneral(p.general);
-
-        // ── Counters ──────────────────────────────────────────────────────
-        S.setNid(p._nid || 0);
-        S.setCid(p._cid || 0);
-
-        // ── Unit system ───────────────────────────────────────────────────
-        if (p._unitSystem === 'si' || p._unitSystem === 'imperial') {
-          S.setUnitSystem(p._unitSystem);
-          setDisplaySystem(S.getUnitSystem());
-          // Sync radio buttons if they exist
-          ['si','imperial'].forEach(function(v) {
-            var lbl = document.getElementById('mr-unit-label-' + v);
-            if (lbl) lbl.style.color = S.getUnitSystem() === v ? ACCENT : '#7a9aaa';
-            var rb = document.querySelector('input[name="mr-unit-system"][value="' + v + '"]');
-            if (rb) rb.checked = S.getUnitSystem() === v;
-          });
+        // jobNumber → doNumber migration for v3.0 files
+        if (p.general && p.general.jobNumber && !p.general.doNumber) {
+          p.general.doNumber = p.general.jobNumber;
         }
 
-        // ── Nodes — migrate params to fill in any new fields ──────────────
-        S.getNodes().forEach(function(n) { removeNodeEl(n.id); });
-        S.setNodes([]);
-        S.setConnections([]);
+        var fileVer = parseFloat(p._version || '1.0');
 
-        (p.nodes || []).forEach(function(nd) {
-          var def = NODE_DEFS[nd.type];
-          if (!def) {
-            warnings.push('Unknown node type "' + nd.type + '" — skipped.');
-            return;
-          }
+        // Add as a new in-memory order and open it
+        var g = p.general || {};
+        var newOrder = {
+          id:          S.nextOid(),
+          filename:    file.name,
+          fileHandle:  null,    // imported from outside the working folder — no handle
+          doNumber:    g.doNumber   || '',
+          partNumber:  g.partNumber || '',
+          partName:    g.partName   || '',
+          customer:    g.customer   || '',
+          status:      g.status     || 'draft',
+          dateCreated: g.dateCreated|| '',
+          version:     p._version   || '1.0',
+          loaded:      true,
+          general:     g,
+          nodes:       p.nodes       || [],
+          connections: p.connections || [],
+          nid:         p._nid || 0,
+          cid:         p._cid || 0,
+          isDirty:     false,
+        };
+        S.pushOrder(newOrder);
+        S.setSelectedOrderId(newOrder.id);
+        S.setActiveOrderId(newOrder.id);   // set before apply so guards unlock correctly
 
-          // Start from a fresh copy of defaultParams so every new field has its default
-          var migratedParams = JSON.parse(JSON.stringify(def.defaultParams || {}));
+        applyPayloadToState(p);
+        S.setIsDirty(false);
 
-          // Overlay saved values on top — preserves user data, fills gaps with defaults
-          if (nd.params) {
-            Object.keys(nd.params).forEach(function(k) {
-              migratedParams[k] = nd.params[k];
-            });
-          }
-
-          var node = {
-            id:     nd.id,
-            type:   nd.type,
-            label:  nd.label || def.label,
-            x:      nd.x || 100,
-            y:      nd.y || 100,
-            params: migratedParams,
-          };
-          S.pushNode(node);
-          renderNodeEl(node);
-        });
-
-        // ── Connections ───────────────────────────────────────────────────
-        // Validate that both endpoints still exist
-        var validNodeIds = S.getNodes().map(function(n) { return n.id; });
-        S.setConnections((p.connections || []).filter(function(c) {
-          var ok = validNodeIds.indexOf(c.fromId) > -1 && validNodeIds.indexOf(c.toId) > -1;
-          if (!ok) warnings.push('Connection ' + c.id + ' references missing node — removed.');
-          return ok;
-        }));
-
-        // ── Refresh everything ────────────────────────────────────────────
-        refreshConnections();
-        refreshLeftPanel();
-        refreshRightPanel();
-        refreshCalcPanel();
-        S.resetViewport();
-        applyWorldTransform();
-
-        // ── Feedback ─────────────────────────────────────────────────────
-        var msg = 'Loaded: ' + file.name +
+        var msg = 'Imported: ' + file.name +
           '\n' + S.getNodes().length + ' nodes · ' + S.getConnections().length + ' connections' +
           (fileVer < parseFloat(SAVE_VERSION) ? '\nMigrated from v' + fileVer + ' → v' + SAVE_VERSION : '');
-        if (warnings.length > 0) msg += '\n\nWarnings:\n' + warnings.join('\n');
         showToast(msg);
 
       } catch (err) {
-        alert('Failed to load config:\n' + err.message);
+        alert('Failed to import:\n' + err.message);
       }
     };
     reader.readAsText(file);
@@ -919,14 +1095,13 @@ function printToPDF() {
 
       '<div style="display:grid;grid-template-columns:1fr 1fr;gap:40px;margin-bottom:40px">'+
         '<div>'+
-          '<div style="font-size:8px;letter-spacing:3px;text-transform:uppercase;color:'+C_faint+';margin-bottom:10px;border-bottom:1px solid '+C_border+';padding-bottom:6px">Job Information</div>'+
+          '<div style="font-size:8px;letter-spacing:3px;text-transform:uppercase;color:'+C_faint+';margin-bottom:10px;border-bottom:1px solid '+C_border+';padding-bottom:6px">Delivery Order</div>'+
           '<table style="border-collapse:collapse;width:100%">'+
-            mRow('Job Number',  S.getGeneral().jobNumber  || '—')+
+            mRow('DO Number',  S.getGeneral().doNumber   || '—')+
             mRow('Part Number', S.getGeneral().partNumber || '—')+
             mRow('Part Name',   S.getGeneral().partName   || '—')+
             mRow('Revision',    S.getGeneral().revision   || '—')+
             mRow('Customer',    S.getGeneral().customer   || '—')+
-            mRow('Work Order',  S.getGeneral().workOrder  || '—')+
           '</table>'+
         '</div>'+
         '<div>'+
@@ -1132,7 +1307,7 @@ function printToPDF() {
       // Footer
       '<div style="margin-top:24px;border-top:1px solid '+C_border+';padding-top:10px;display:flex;justify-content:space-between;font-size:8px;letter-spacing:1px;color:'+C_faint+';text-transform:uppercase">'+
         '<span>Forgeworks · '+esc(step.label)+'</span>'+
-        '<span>Job: '+esc(S.getGeneral().jobNumber||'—')+'</span>'+
+        '<span>DO: '+esc(S.getGeneral().doNumber||'—')+'</span>'+
         '<span>Step '+(idx+1)+' of '+chain.length+'</span>'+
       '</div>'+
     '</div>';
@@ -1193,7 +1368,7 @@ function printToPDF() {
   ].join('');
 
   var html = '<!DOCTYPE html><html><head><meta charset="UTF-8">'+
-    '<title>Forgeworks MFG Review \u2014 '+(S.getGeneral().jobNumber||'Export')+'</title>'+
+    '<title>Forgeworks MFG Review \u2014 '+(S.getGeneral().doNumber||'Export')+'</title>'+
     '<style>'+css+'</style></head><body>'+
     coverHTML + stepsHTML + summaryPage +
     '</body></html>';
@@ -1237,7 +1412,7 @@ function exportToExcel() {
   var rows = [];
   rows.push(['FORGEWORKS — MANUFACTURING REVIEW', '', '', '', '']);
   rows.push(['', '', '', '', '']);
-  rows.push(['Job Number', S.getGeneral().jobNumber || '—', 'Customer', S.getGeneral().customer || '—', '']);
+  rows.push(['DO Number', S.getGeneral().doNumber || '—', 'Customer', S.getGeneral().customer || '—', '']);
   rows.push(['Engineer',   S.getGeneral().engineer  || '—', 'Date',     S.getGeneral().dateCreated || '—', '']);
   rows.push(['Status',     S.getGeneral().status    || '—', 'Units',    filters.units, '']);
   rows.push(['View Filters', filters.summary, '', '', '']);
@@ -1288,7 +1463,7 @@ function exportToExcel() {
   });
 
   xml += '</Table></Worksheet></Workbook>';
-  var fn = 'mfg-review-' + (S.getGeneral().jobNumber || 'export').replace(/\s+/g,'-') + '.xls';
+  var fn = 'mfg-review-' + (S.getGeneral().doNumber || 'export').replace(/\s+/g,'-') + '.xls';
   exportDownload(fn, xml, 'application/vnd.ms-excel');
 }
 
@@ -1315,7 +1490,7 @@ function exportToCSV() {
 
   var lines = [];
   lines.push(csvRow(['Forgeworks Manufacturing Review']));
-  lines.push(csvRow(['Job', S.getGeneral().jobNumber||'', 'Customer', S.getGeneral().customer||'']));
+  lines.push(csvRow(['DO Number', S.getGeneral().doNumber||'', 'Customer', S.getGeneral().customer||'']));
   lines.push(csvRow(['Engineer', S.getGeneral().engineer||'', 'Date', S.getGeneral().dateCreated||'']));
   lines.push(csvRow(['Units', filters.units]));
   lines.push(csvRow(['View Filters', filters.summary]));
@@ -1343,7 +1518,7 @@ function exportToCSV() {
     lines.push('');
   });
 
-  var fn = 'mfg-review-' + (S.getGeneral().jobNumber || 'export').replace(/\s+/g,'-') + '.csv';
+  var fn = 'mfg-review-' + (S.getGeneral().doNumber || 'export').replace(/\s+/g,'-') + '.csv';
   exportDownload(fn, lines.join('\r\n'), 'text/csv');
 }
 
@@ -1363,7 +1538,7 @@ function exportToTxt() {
 
   lines.push('FORGEWORKS  ·  MANUFACTURING REVIEW');
   lines.push(HR);
-  lines.push('Job       ' + (S.getGeneral().jobNumber  || '—'));
+  lines.push('DO        ' + (S.getGeneral().doNumber    || '—'));
   lines.push('Customer  ' + (S.getGeneral().customer   || '—'));
   lines.push('Engineer  ' + (S.getGeneral().engineer   || '—'));
   lines.push('Date      ' + (S.getGeneral().dateCreated|| '—'));
@@ -1401,7 +1576,7 @@ function exportToTxt() {
   lines.push('Generated  ' + new Date().toLocaleString());
   lines.push('Forgeworks MFG-REVIEW v2.0');
 
-  var fn = 'mfg-review-' + (S.getGeneral().jobNumber || 'export').replace(/\s+/g,'-') + '.txt';
+  var fn = 'mfg-review-' + (S.getGeneral().doNumber || 'export').replace(/\s+/g,'-') + '.txt';
   exportDownload(fn, lines.join('\n'), 'text/plain');
 }
 
@@ -1432,27 +1607,82 @@ function injectStyles() {
 
 
 // ===========================================================================
-// DEFAULT GRAPH
+// EXAMPLE ORDER
 // ===========================================================================
 
-function buildDefaultGraph() {
-  var sp = NODE_W + 80;
-  var sx = 60, sy = 160;
-  // stock_in → cut (sizing) → heat → forge → heat_treat → inspect → stock_out
-  var n0 = createNode('stock_in',   sx,        sy);
-  var n1 = createNode('cut',        sx+sp,     sy);
-  var n2 = createNode('heat',       sx+sp*2,   sy);
-  var n3 = createNode('forge',      sx+sp*3,   sy);
-  var n4 = createNode('heat_treat', sx+sp*4,   sy);
-  var n5 = createNode('inspect',    sx+sp*5,   sy);
-  var n6 = createNode('stock_out',  sx+sp*6,   sy);
-  addConnection(n0.id, n1.id);
-  addConnection(n1.id, n2.id);
-  addConnection(n2.id, n3.id);
-  addConnection(n3.id, n4.id);
-  addConnection(n4.id, n5.id);
-  addConnection(n5.id, n6.id);
-  refreshRightPanel(); refreshCalcPanel();
+// Builds the permanent coded-in example delivery order as a plain data object.
+// Does NOT touch the DOM — nodes are rendered only when the user opens it.
+// The example always sits at the top of the Orders list with an EXAMPLE badge.
+
+function buildExampleOrder() {
+  var sp  = NODE_W + 80;
+  var sx  = 60, sy = 160;
+  var nid = 0;
+  var cid = 0;
+
+  function exNode(type, x, y) {
+    var def = NODE_DEFS[type];
+    return {
+      id:     'ex_' + (nid++),
+      type:   type,
+      label:  def.label,
+      x:      x,
+      y:      y,
+      params: JSON.parse(JSON.stringify(def.defaultParams || {})),
+    };
+  }
+
+  var n0 = exNode('stock_in',   sx,          sy);
+  var n1 = exNode('cut',        sx + sp,     sy);
+  var n2 = exNode('heat',       sx + sp * 2, sy);
+  var n3 = exNode('forge',      sx + sp * 3, sy);
+  var n4 = exNode('heat_treat', sx + sp * 4, sy);
+  var n5 = exNode('inspect',    sx + sp * 5, sy);
+  var n6 = exNode('stock_out',  sx + sp * 6, sy);
+
+  var nodes = [n0, n1, n2, n3, n4, n5, n6];
+  var connections = [
+    { id: 'ec_' + (cid++), fromId: n0.id, toId: n1.id, cycle: 1 },
+    { id: 'ec_' + (cid++), fromId: n1.id, toId: n2.id, cycle: 1 },
+    { id: 'ec_' + (cid++), fromId: n2.id, toId: n3.id, cycle: 1 },
+    { id: 'ec_' + (cid++), fromId: n3.id, toId: n4.id, cycle: 1 },
+    { id: 'ec_' + (cid++), fromId: n4.id, toId: n5.id, cycle: 1 },
+    { id: 'ec_' + (cid++), fromId: n5.id, toId: n6.id, cycle: 1 },
+  ];
+
+  return {
+    id:          'example-order',
+    isExample:   true,
+    filename:    null,
+    fileHandle:  null,
+    doNumber:    'EXAMPLE',
+    partNumber:  'EX-001',
+    partName:    'Example Forge Part',
+    customer:    'Forgeworks',
+    status:      'draft',
+    dateCreated: '',
+    version:     SAVE_VERSION,
+    loaded:      true,
+    isDirty:     false,
+    general: {
+      doNumber:    'EXAMPLE',
+      partNumber:  'EX-001',
+      partName:    'Example Forge Part',
+      revision:    'A',
+      customer:    'Forgeworks',
+      engineer:    '',
+      dateCreated: '',
+      status:      'draft',
+      notes:       'Built-in example delivery order. Shows a complete forge process chain: Stock In → Cut → Heat → Forge → Heat Treat → Inspect → Stock Out.',
+      material:    '4140',
+      condition:   'annealed',
+      density:     7.85,
+    },
+    nodes:       nodes,
+    connections: connections,
+    nid:         nid,
+    cid:         cid,
+  };
 }
 
 
@@ -1467,10 +1697,7 @@ export function show() {
   setDisplaySystem(S.getUnitSystem());   // sync unit lib to current default
   refreshLeftPanel();
   refreshStatusBadge();
-  if (S.getNodes().length === 0) {
-    S.resetViewport();
-    buildDefaultGraph();
-  }
+  S.resetViewport();
   applyWorldTransform();
 }
 

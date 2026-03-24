@@ -90,6 +90,14 @@ export function refreshCalcPanel() {
   if (!content) return;
   content.innerHTML = '';
 
+  if (!S.getActiveOrderId()) {
+    var locked = document.createElement('div');
+    Object.assign(locked.style, { color: '#3a5060', fontSize: '10px', textAlign: 'center', padding: '32px', lineHeight: '2.0', whiteSpace: 'pre-line' });
+    locked.textContent = 'Open a delivery order\nto see calculations.';
+    content.appendChild(locked);
+    return;
+  }
+
   var chain = computeChain();
   if (chain.length === 0) {
     var ph = document.createElement('div');
