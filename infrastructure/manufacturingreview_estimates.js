@@ -34,7 +34,7 @@ export function buildRightPanel() {
   var panel = document.createElement('div');
   panel.id = 'mr-right';
   Object.assign(panel.style, {
-    width: '300px', minWidth: '260px', maxWidth: '360px', flexShrink: '0',
+    width: '300px', minWidth: '60px', maxWidth: '800px', flexShrink: '0',
     display: 'flex', flexDirection: 'column',
     borderLeft: '1px solid rgba(255,255,255,0.22)',
     background: 'rgba(4,8,14,0.5)',

@@ -226,13 +226,13 @@ function buildOverlay() {
   var body = document.createElement('div');
   Object.assign(body.style, { flex: '1', display: 'flex', flexDirection: 'row', overflow: 'hidden', minHeight: '0' });
   body.appendChild(leftPanel);
-  body.appendChild(buildPanelHandle(leftPanel,  'x', +1, 280, 120, 520));
+  body.appendChild(buildPanelHandle(leftPanel,  'x', +1, 280,  60, 800));
   body.appendChild(buildCanvasPanel());
-  body.appendChild(buildPanelHandle(rightPanel, 'x', -1, 300, 140, 560));
+  body.appendChild(buildPanelHandle(rightPanel, 'x', -1, 300,  60, 800));
   body.appendChild(rightPanel);
   outer.appendChild(body);
 
-  outer.appendChild(buildPanelHandle(calcPanel, 'y', -1, 280, 38, 520));
+  outer.appendChild(buildPanelHandle(calcPanel, 'y', -1, 280, 38, 700));
   outer.appendChild(calcPanel);
   S.getOverlay().appendChild(outer);
 

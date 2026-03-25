@@ -72,7 +72,7 @@ export function buildLeftPanel() {
   var panel = document.createElement('div');
   panel.id = 'mr-left';
   Object.assign(panel.style, {
-    width: '280px', minWidth: '240px', maxWidth: '320px', flexShrink: '0',
+    width: '280px', minWidth: '60px', maxWidth: '800px', flexShrink: '0',
     display: 'flex', flexDirection: 'column',
     borderRight: '1px solid rgba(255,255,255,0.22)',
     background: 'rgba(4,8,14,0.5)',
@@ -1574,6 +1574,7 @@ function makeOrderBtn(label, disabled) {
     fontSize: '9px', fontFamily: 'inherit', letterSpacing: '1px',
     cursor: disabled ? 'default' : 'pointer',
     transition: 'all 0.15s ease',
+    whiteSpace: 'nowrap',
   });
   btn.textContent = label;
   btn.disabled    = !!disabled;
