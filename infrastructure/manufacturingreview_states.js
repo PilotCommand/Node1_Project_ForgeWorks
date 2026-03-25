@@ -247,6 +247,15 @@ var _general = {
   material:    '4140',
   condition:   'annealed',
   density:     7.85,        // g/cm³
+  // Parent / child DO relationship
+  isParent:       false,    // true if this order has been split into child batches
+  isChild:        false,    // true if this order is a batch of a larger parent DO
+  parentDoNumber: null,     // base DO number of the parent (string), null if not a child
+  childCount:     0,        // number of child batches (only meaningful when isParent)
+  // Quantity fields
+  totalQuantity:  0,        // total parts across all batches (set on parent)
+  batchQuantity:  0,        // parts in this specific batch (set on child)
+  batchNotes:     '',       // notes specific to this batch
 };
 
 export function getGeneral()           { return _general; }
@@ -258,18 +267,25 @@ export function patchGeneral(obj) {
 
 // Full reset back to defaults — used when clearing a session.
 export function resetGeneral() {
-  _general.doNumber    = '';
-  _general.partNumber  = '';
-  _general.partName    = '';
-  _general.revision    = '';
-  _general.customer    = '';
-  _general.engineer    = '';
-  _general.dateCreated = new Date().toISOString().slice(0, 10);
-  _general.status      = 'draft';
-  _general.notes       = '';
-  _general.material    = '4140';
-  _general.condition   = 'annealed';
-  _general.density     = 7.85;
+  _general.doNumber       = '';
+  _general.partNumber     = '';
+  _general.partName       = '';
+  _general.revision       = '';
+  _general.customer       = '';
+  _general.engineer       = '';
+  _general.dateCreated    = new Date().toISOString().slice(0, 10);
+  _general.status         = 'draft';
+  _general.notes          = '';
+  _general.material       = '4140';
+  _general.condition      = 'annealed';
+  _general.density        = 7.85;
+  _general.isParent       = false;
+  _general.isChild        = false;
+  _general.parentDoNumber = null;
+  _general.childCount     = 0;
+  _general.totalQuantity  = 0;
+  _general.batchQuantity  = 0;
+  _general.batchNotes     = '';
 }
 
 // ============================================================================
@@ -312,12 +328,17 @@ export function setShowTagCalculation(v)   { _showTagCalculation = v; }
 // ORDERS LIST
 // _orders — array of order objects known to the Orders panel.
 //
-// Two shapes depending on whether the order has been opened:
+// All orders are peers in a flat array — no nesting. Parent/child
+// relationships are encoded in the doNumber field and the isParent/isChild
+// flags. Grouping into a tree is done at render time only.
+//
+// Two loading shapes depending on whether the order has been opened:
 //
 //   Unloaded (scanned from folder, not yet opened):
 //   {
 //     id, filename, fileHandle,
 //     doNumber, partNumber, partName, customer, status, dateCreated,
+//     isParent, isChild, parentDoNumber, childCount,
 //     loaded: false
 //   }
 //
@@ -325,10 +346,14 @@ export function setShowTagCalculation(v)   { _showTagCalculation = v; }
 //   {
 //     id, filename, fileHandle,
 //     doNumber, partNumber, partName, customer, status, dateCreated,
+//     isParent, isChild, parentDoNumber, childCount,
 //     loaded: true,
 //     general: {...}, nodes: [...], connections: [...], nid, cid,
 //     isDirty: false
 //   }
+//
+// Session-only fields (never persisted to JSON):
+//   isExpanded — whether the tree row is expanded to show children
 //
 // The currently active order's live edits always live in the main _general /
 // _nodes / _connections state above. Before switching orders, callers must

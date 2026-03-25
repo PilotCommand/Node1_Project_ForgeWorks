@@ -183,15 +183,19 @@ export function restoreWorkingFolder() {
  *
  * Returns an array of summary objects, one per compatible file found:
  * {
- *   filename:    string,                    // e.g. "mfg-review_DO-2025-001.json"
- *   fileHandle:  FileSystemFileHandle,
- *   doNumber:    string,                    // general.doNumber (or migrated jobNumber)
- *   partNumber:  string,
- *   partName:    string,
- *   customer:    string,
- *   status:      string,                    // draft | review | approved | released | obsolete
- *   dateCreated: string,
- *   version:     string,                    // _version field from file
+ *   filename:       string,                 // e.g. "000001_2025-03-24_143022.json"
+ *   fileHandle:     FileSystemFileHandle,
+ *   doNumber:       string,                 // general.doNumber (or migrated jobNumber)
+ *   partNumber:     string,
+ *   partName:       string,
+ *   customer:       string,
+ *   status:         string,                 // draft | review | approved | released | obsolete
+ *   dateCreated:    string,
+ *   version:        string,                 // _version field from file
+ *   isParent:       boolean,                // true if this order has child batches
+ *   isChild:        boolean,                // true if this order is a child batch
+ *   parentDoNumber: string|null,            // base DO number of parent, null if not a child
+ *   childCount:     number,                 // number of children (meaningful on parent only)
  * }
  *
  * @param {FileSystemDirectoryHandle} dirHandle
@@ -265,15 +269,19 @@ export function scanFolder(dirHandle) {
             var doNumber = g.doNumber || g.jobNumber || '';
 
             return {
-              filename:    entry.name,
-              fileHandle:  entry.handle,
-              doNumber:    doNumber,
-              partNumber:  g.partNumber   || '',
-              partName:    g.partName     || '',
-              customer:    g.customer     || '',
-              status:      g.status       || 'draft',
-              dateCreated: g.dateCreated  || '',
-              version:     parsed._version || '1.0',
+              filename:       entry.name,
+              fileHandle:     entry.handle,
+              doNumber:       doNumber,
+              partNumber:     g.partNumber     || '',
+              partName:       g.partName       || '',
+              customer:       g.customer       || '',
+              status:         g.status         || 'draft',
+              dateCreated:    g.dateCreated    || '',
+              version:        parsed._version  || '1.0',
+              isParent:       !!g.isParent,
+              isChild:        !!g.isChild,
+              parentDoNumber: g.parentDoNumber || null,
+              childCount:     g.childCount     || 0,
             };
           })
           .catch(function() {
@@ -284,14 +292,15 @@ export function scanFolder(dirHandle) {
 
     return Promise.all(filePromises);
   }).then(function(rawResults) {
-    // Filter out nulls (skipped files) and sort by dateCreated descending
+    // Filter out nulls (skipped files) and sort by DO number ascending
     return rawResults
       .filter(function(r) { return r !== null; })
       .sort(function(a, b) {
-        // Most recently created first
-        if (a.dateCreated < b.dateCreated) return 1;
-        if (a.dateCreated > b.dateCreated) return -1;
-        return a.doNumber.localeCompare(b.doNumber);
+        // Numeric DO number sort — parents before their children,
+        // children sorted suffix descending (02 first, 00 last)
+        if (a.doNumber < b.doNumber) return -1;
+        if (a.doNumber > b.doNumber) return  1;
+        return 0;
       });
   });
 }

@@ -171,17 +171,22 @@ function buildOverlay() {
       if (!results) return;
       results.forEach(function(r) {
         S.pushOrder({
-          id:          S.nextOid(),
-          filename:    r.filename,
-          fileHandle:  r.fileHandle,
-          doNumber:    r.doNumber,
-          partNumber:  r.partNumber,
-          partName:    r.partName,
-          customer:    r.customer,
-          status:      r.status,
-          dateCreated: r.dateCreated,
-          version:     r.version,
-          loaded:      false,
+          id:             S.nextOid(),
+          filename:       r.filename,
+          fileHandle:     r.fileHandle,
+          doNumber:       r.doNumber,
+          partNumber:     r.partNumber,
+          partName:       r.partName,
+          customer:       r.customer,
+          status:         r.status,
+          dateCreated:    r.dateCreated,
+          version:        r.version,
+          isParent:       r.isParent,
+          isChild:        r.isChild,
+          parentDoNumber: r.parentDoNumber,
+          childCount:     r.childCount,
+          isExpanded:     false,
+          loaded:         false,
         });
       });
       refreshOrdersPanel();
@@ -708,7 +713,7 @@ function styleBarBtn(btn) {
 }
 
 
-export var SAVE_VERSION = '4.0';
+export var SAVE_VERSION = '5.0';
 
 // ---------------------------------------------------------------------------
 // Build the canonical save payload from current state
@@ -874,9 +879,21 @@ function applyOrderToState(order) {
 function applyPayloadToState(payload) {
   var warnings = [];
 
-  // jobNumber → doNumber migration for v3.0 files
+  // v3.0 migration: jobNumber → doNumber
   if (payload.general && payload.general.jobNumber && !payload.general.doNumber) {
     payload.general.doNumber = payload.general.jobNumber;
+  }
+
+  // v4.0 → v5.0 migration: fill in new parent/child fields with safe defaults
+  // so old files load correctly without any data loss
+  if (payload.general) {
+    if (payload.general.isParent       === undefined) payload.general.isParent       = false;
+    if (payload.general.isChild        === undefined) payload.general.isChild        = false;
+    if (payload.general.parentDoNumber === undefined) payload.general.parentDoNumber = null;
+    if (payload.general.childCount     === undefined) payload.general.childCount     = 0;
+    if (payload.general.totalQuantity  === undefined) payload.general.totalQuantity  = 0;
+    if (payload.general.batchQuantity  === undefined) payload.general.batchQuantity  = 0;
+    if (payload.general.batchNotes     === undefined) payload.general.batchNotes     = '';
   }
 
   S.resetGeneral();
@@ -1670,32 +1687,44 @@ function buildExampleOrder() {
   ];
 
   return {
-    id:          'example-order',
-    isExample:   true,
-    filename:    null,
-    fileHandle:  null,
-    doNumber:    'EXAMPLE',
-    partNumber:  'EX-001',
-    partName:    'Example Forge Part',
-    customer:    'Forgeworks',
-    status:      'draft',
-    dateCreated: '',
-    version:     SAVE_VERSION,
-    loaded:      true,
-    isDirty:     false,
+    id:             'example-order',
+    isExample:      true,
+    filename:       null,
+    fileHandle:     null,
+    doNumber:       'EXAMPLE',
+    partNumber:     'EX-001',
+    partName:       'Example Forge Part',
+    customer:       'Forgeworks',
+    status:         'draft',
+    dateCreated:    '',
+    version:        SAVE_VERSION,
+    loaded:         true,
+    isDirty:        false,
+    isParent:       false,
+    isChild:        false,
+    parentDoNumber: null,
+    childCount:     0,
+    isExpanded:     false,
     general: {
-      doNumber:    'EXAMPLE',
-      partNumber:  'EX-001',
-      partName:    'Example Forge Part',
-      revision:    'A',
-      customer:    'Forgeworks',
-      engineer:    '',
-      dateCreated: '',
-      status:      'draft',
-      notes:       'Built-in example delivery order. Shows a complete forge process chain: Stock In → Cut → Heat → Forge → Heat Treat → Inspect → Stock Out.',
-      material:    '4140',
-      condition:   'annealed',
-      density:     7.85,
+      doNumber:       'EXAMPLE',
+      partNumber:     'EX-001',
+      partName:       'Example Forge Part',
+      revision:       'A',
+      customer:       'Forgeworks',
+      engineer:       '',
+      dateCreated:    '',
+      status:         'draft',
+      notes:          'Built-in example delivery order. Shows a complete forge process chain: Stock In → Cut → Heat → Forge → Heat Treat → Inspect → Stock Out.',
+      material:       '4140',
+      condition:      'annealed',
+      density:        7.85,
+      isParent:       false,
+      isChild:        false,
+      parentDoNumber: null,
+      childCount:     0,
+      totalQuantity:  0,
+      batchQuantity:  0,
+      batchNotes:     '',
     },
     nodes:       nodes,
     connections: connections,
