@@ -729,19 +729,34 @@ function mergeScanResults(scanResults) {
   // Keep only: the example order, unsaved in-memory orders (no fileHandle/filename),
   // and the currently active order even if its file was externally deleted.
   S.filterOrders(function(o) {
-    if (o.isExample)                         return true;  // always keep the example
-    if (!o.fileHandle && !o.filename)        return true;  // unsaved, in-memory only
-    if (o.id === S.getActiveOrderId())       return true;  // currently open — never evict
-    return false;                                           // remove all other disk entries
+    if (o.isExample)                         return true;
+    if (!o.fileHandle && !o.filename)        return true;
+    if (o.id === S.getActiveOrderId())       return true;
+    return false;
   });
 
   // Step 2 — Add fresh scan results.
-  // If the active order happens to be one of the scanned files, update its
-  // handle/metadata in-place rather than adding a duplicate.
+  // Match by DID1 or DID2 first (most reliable), fall back to filename for
+  // old files that predate the DID system.
   scanResults.forEach(function(result) {
-    var existing = S.findOrder(function(o) { return o.filename === result.filename; });
+    var existing = null;
+
+    // DID match — finds the same order even if it was renamed on disk
+    if (result.did1 || result.did2) {
+      existing = S.findOrder(function(o) {
+        return (result.did1 && o.did1 && o.did1 === result.did1) ||
+               (result.did2 && o.did2 && o.did2 === result.did2);
+      });
+    }
+
+    // Filename fallback for pre-DID files
+    if (!existing) {
+      existing = S.findOrder(function(o) { return o.filename === result.filename; });
+    }
+
     if (existing) {
       existing.fileHandle     = result.fileHandle;
+      existing.filename       = result.filename;   // update in case of rename
       existing.doNumber       = result.doNumber;
       existing.partNumber     = result.partNumber;
       existing.partName       = result.partName;
@@ -749,6 +764,8 @@ function mergeScanResults(scanResults) {
       existing.status         = result.status;
       existing.dateCreated    = result.dateCreated;
       existing.version        = result.version;
+      if (result.did1) existing.did1 = result.did1;
+      if (result.did2) existing.did2 = result.did2;
       existing.isParent       = result.isParent;
       existing.isChild        = result.isChild;
       existing.parentDoNumber = result.parentDoNumber;
@@ -756,6 +773,8 @@ function mergeScanResults(scanResults) {
     } else {
       S.pushOrder({
         id:             S.nextOid(),
+        did1:           result.did1 || '',
+        did2:           result.did2 || '',
         filename:       result.filename,
         fileHandle:     result.fileHandle,
         doNumber:       result.doNumber,
@@ -1077,7 +1096,7 @@ function buildOrderRow(order, indented, hasChildren, isLastChild) {
   var content = document.createElement('div');
   Object.assign(content.style, { flex: '1', padding: '7px 8px', minWidth: '0' });
 
-  // Line 1: DO number + dirty dot + badges
+  // Line 1: DO number + badges
   var line1 = document.createElement('div');
   Object.assign(line1.style, {
     display: 'flex', alignItems: 'center', gap: '4px', marginBottom: '2px',
@@ -1100,71 +1119,69 @@ function buildOrderRow(order, indented, hasChildren, isLastChild) {
     line1.appendChild(countHint);
   }
 
-  // Dirty dot
-  if (order.isDirty) {
-    var dot = document.createElement('span');
-    Object.assign(dot.style, { color: '#e9c46a', fontSize: '8px', flexShrink: '0' });
-    dot.textContent = '●';
-    dot.title = 'Unsaved changes';
-    line1.appendChild(dot);
+  // For the active order, use the live S.getIsDirty() state
+  var effectiveDirty = isActive ? S.getIsDirty() : !!order.isDirty;
+  var isExample      = !!order.isExample;
+  var hasFile        = !isExample && (!!order.fileHandle || !!order.filename);
+
+  // Helper to build a consistent badge span
+  function makeBadge(text, color, borderAlpha, bgAlpha, tooltip) {
+    var b = document.createElement('span');
+    Object.assign(b.style, {
+      fontSize: '7px', letterSpacing: '1px', textTransform: 'uppercase',
+      padding: '1px 5px', borderRadius: '2px', flexShrink: '0',
+      color: color,
+      border: '1px solid ' + color.replace(')', ', ' + (borderAlpha || '0.5)').replace('rgb', 'rgba')),
+      background: color.replace(')', ', ' + (bgAlpha || '0.08)').replace('rgb', 'rgba')),
+    });
+    // Simpler approach — inline the colors directly
+    b.style.border      = '1px solid ' + color + '80';
+    b.style.background  = color + '14';
+    b.textContent = text;
+    if (tooltip) b.title = tooltip;
+    return b;
   }
 
-  // ACTIVE badge
+  // ACTIVE
   if (isActive) {
-    var activeBadge = document.createElement('span');
-    Object.assign(activeBadge.style, {
-      fontSize: '7px', letterSpacing: '1px', textTransform: 'uppercase',
-      padding: '1px 5px', borderRadius: '2px', flexShrink: '0',
-      color: ACCENT, border: '1px solid ' + ACCENT_DIM + '0.5)',
-      background: ACCENT_DIM + '0.10)',
-    });
-    activeBadge.textContent = 'active';
-    line1.appendChild(activeBadge);
+    line1.appendChild(makeBadge('active', ACCENT));
   }
 
-  // FINAL badge on -00 child
-  if (isLastChild && order.isChild) {
-    var finalBadge = document.createElement('span');
-    Object.assign(finalBadge.style, {
-      fontSize: '7px', letterSpacing: '1px', textTransform: 'uppercase',
-      padding: '1px 5px', borderRadius: '2px', flexShrink: '0',
-      color: '#2ec4b6', border: '1px solid rgba(46,196,182,0.5)',
-      background: 'rgba(46,196,182,0.08)',
-    });
-    finalBadge.textContent = 'final';
-    line1.appendChild(finalBadge);
+  // EXAMPLE
+  if (isExample) {
+    line1.appendChild(makeBadge('example', '#9a70d0'));   // purple
   }
 
-  // ORPHAN badge
-  if (order._isOrphan) {
-    var orphanBadge = document.createElement('span');
-    Object.assign(orphanBadge.style, {
-      fontSize: '7px', letterSpacing: '1px', textTransform: 'uppercase',
-      padding: '1px 5px', borderRadius: '2px', flexShrink: '0',
-      color: '#e9c46a', border: '1px solid rgba(233,196,106,0.4)',
-      background: 'rgba(233,196,106,0.06)',
-    });
-    orphanBadge.textContent = 'orphan';
-    orphanBadge.title = 'Parent DO not found in this session';
-    line1.appendChild(orphanBadge);
+  // PARENT / CHILD / ORPHAN — structural relationship tags
+  if (!isExample) {
+    if (order._isOrphan) {
+      line1.appendChild(makeBadge('orphan', '#d4763b', null, null, 'Parent DO not found in this session'));  // burnt orange — distinct from everything
+    } else if (order.isParent) {
+      line1.appendChild(makeBadge('parent', '#60a0e0'));  // blue
+    } else if (order.isChild) {
+      line1.appendChild(makeBadge('child',  '#e879a0'));  // pink
+    }
   }
 
-  // File state badge (EXAMPLE / SAVED / DRAFT) — rightmost
-  var isUnsaved = !order.fileHandle && !order.filename && !order.isExample;
-  var isExample = !!order.isExample;
-  var isSaved   = !isExample && !isUnsaved;
+  // FINAL — -00 terminating batch
+  if (isLastChild && order.isChild && !order._isOrphan) {
+    line1.appendChild(makeBadge('final', '#2ec4b6'));     // teal
+  }
 
-  var badge = document.createElement('span');
-  var badgeColor  = isExample ? '#2ec4b6' : isSaved ? '#50d080' : '#e9c46a';
-  var badgeBorder = isExample ? 'rgba(46,196,182,0.5)' : isSaved ? 'rgba(80,208,128,0.5)' : 'rgba(233,196,106,0.5)';
-  var badgeBg     = isExample ? 'rgba(46,196,182,0.08)' : isSaved ? 'rgba(80,208,128,0.06)' : 'rgba(233,196,106,0.08)';
-  Object.assign(badge.style, {
-    fontSize: '7px', letterSpacing: '1px', textTransform: 'uppercase',
-    padding: '1px 5px', borderRadius: '2px', flexShrink: '0',
-    color: badgeColor, border: '1px solid ' + badgeBorder, background: badgeBg,
-  });
-  badge.textContent = isExample ? 'example' : isSaved ? 'saved' : 'draft';
-  line1.appendChild(badge);
+  // SAVED / UNSAVED — always shown, purely reflects whether a file exists
+  if (!isExample) {
+    if (hasFile) {
+      line1.appendChild(makeBadge('saved',   '#50d080'));  // green
+    } else {
+      line1.appendChild(makeBadge('unsaved', '#99aacc'));  // grey
+    }
+  }
+
+  // DRAFT — additional tag when file exists but has unsaved edits
+  if (!isExample && hasFile && effectiveDirty) {
+    line1.appendChild(makeBadge('draft', '#e9c46a'));     // amber
+  }
+
   content.appendChild(line1);
 
   // Line 2: part name · part number
@@ -1234,6 +1251,8 @@ function buildOrderActionRow() {
     var today = new Date().toISOString().slice(0, 10);
     var newOrder = {
       id:             S.nextOid(),
+      did1:           DON.generateDID1(),
+      did2:           DON.generateDID2(),
       filename:       null,
       fileHandle:     null,
       doNumber:       '',
@@ -1500,11 +1519,13 @@ function buildSplitForm(order, onDone) {
     var today    = new Date().toISOString().slice(0, 10);
 
     // Mark the parent
-    order.isParent  = true;
+    order.isParent   = true;
     order.childCount = n;
     order.isExpanded = true;
+    order.isDirty    = true;   // parent file is now out of date — needs resave
+    S.setIsDirty(true);        // also set live flag so the draft badge shows immediately
     if (order.general) {
-      order.general.isParent  = true;
+      order.general.isParent   = true;
       order.general.childCount = n;
     }
 
@@ -1524,6 +1545,8 @@ function buildSplitForm(order, onDone) {
 
       S.pushOrder({
         id:             S.nextOid(),
+        did1:           DON.generateDID1(),
+        did2:           DON.generateDID2(),
         filename:       null,
         fileHandle:     null,
         doNumber:       childDoNumber,

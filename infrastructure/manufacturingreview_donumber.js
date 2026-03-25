@@ -290,3 +290,82 @@ export function compareDoNumbers(a, b) {
   var sufB = parseInt(pb.suffix, 10);
   return sufB - sufA;
 }
+
+
+// ---------------------------------------------------------------------------
+// DID Generation
+// ---------------------------------------------------------------------------
+
+/**
+ * Generate DID1 — timestamp-based unique identifier.
+ *
+ * Format: FW-<millisecond timestamp>-<6 random hex chars>
+ * Example: FW-1711234567890-A3F9B2
+ *
+ * The timestamp component (ms since epoch) makes every ID time-ordered
+ * and unique per millisecond. The random hex suffix eliminates collisions
+ * within the same millisecond.
+ *
+ * @returns {string}
+ */
+export function generateDID1() {
+  var ts  = Date.now().toString();
+  var hex = '';
+  var arr = new Uint8Array(3);
+  if (typeof crypto !== 'undefined' && crypto.getRandomValues) {
+    crypto.getRandomValues(arr);
+  } else {
+    // Fallback for environments without crypto
+    arr[0] = Math.floor(Math.random() * 256);
+    arr[1] = Math.floor(Math.random() * 256);
+    arr[2] = Math.floor(Math.random() * 256);
+  }
+  for (var i = 0; i < arr.length; i++) {
+    hex += arr[i].toString(16).toUpperCase().padStart(2, '0');
+  }
+  return 'FW-' + ts + '-' + hex;
+}
+
+/**
+ * Generate DID2 — UUID v4 (RFC 4122).
+ *
+ * Format: xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx
+ * Example: 550e8400-e29b-41d4-a716-446655440000
+ *
+ * Uses crypto.randomUUID() if available (Chrome 92+, Edge 92+).
+ * Falls back to a manual RFC 4122 v4 implementation using
+ * crypto.getRandomValues() for older browser versions.
+ * 122 bits of randomness — collision probability is negligible.
+ *
+ * @returns {string}
+ */
+export function generateDID2() {
+  // Native implementation — preferred
+  if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
+    return crypto.randomUUID();
+  }
+
+  // Manual RFC 4122 v4 fallback using crypto.getRandomValues
+  var bytes = new Uint8Array(16);
+  if (typeof crypto !== 'undefined' && crypto.getRandomValues) {
+    crypto.getRandomValues(bytes);
+  } else {
+    for (var i = 0; i < 16; i++) bytes[i] = Math.floor(Math.random() * 256);
+  }
+
+  // Set version bits (4) and variant bits (RFC 4122)
+  bytes[6] = (bytes[6] & 0x0f) | 0x40;
+  bytes[8] = (bytes[8] & 0x3f) | 0x80;
+
+  var hex = Array.from(bytes).map(function(b) {
+    return b.toString(16).padStart(2, '0');
+  }).join('');
+
+  return [
+    hex.slice(0,  8),
+    hex.slice(8,  12),
+    hex.slice(12, 16),
+    hex.slice(16, 20),
+    hex.slice(20, 32),
+  ].join('-');
+}

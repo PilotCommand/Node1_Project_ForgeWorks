@@ -80,6 +80,7 @@ import {
   refreshOrdersPanel,
 } from './manufacturingreview_inputs.js';
 import * as FS from './manufacturingreview_deliveryorder.js';
+import * as DON from './manufacturingreview_donumber.js';
 
 
 function setUnitSystem(sys) {
@@ -120,16 +121,21 @@ function refreshStatusBadge() {
     el.style.background  = 'rgba(46,196,182,0.08)';
     el.style.color       = '#2ec4b6';
     el.style.borderColor = 'rgba(46,196,182,0.5)';
-  } else if (order.fileHandle || order.filename) {
-    el.textContent       = 'SAVED';
-    el.style.background  = 'rgba(80,208,128,0.06)';
-    el.style.color       = '#50d080';
-    el.style.borderColor = 'rgba(80,208,128,0.5)';
-  } else {
+  } else if (!order.fileHandle && !order.filename) {
+    el.textContent       = 'UNSAVED';
+    el.style.background  = 'transparent';
+    el.style.color       = '#99aacc';
+    el.style.borderColor = 'rgba(153,170,204,0.4)';
+  } else if (order.isDirty) {
     el.textContent       = 'DRAFT';
     el.style.background  = 'rgba(233,196,106,0.08)';
     el.style.color       = '#e9c46a';
     el.style.borderColor = 'rgba(233,196,106,0.5)';
+  } else {
+    el.textContent       = 'SAVED';
+    el.style.background  = 'rgba(80,208,128,0.06)';
+    el.style.color       = '#50d080';
+    el.style.borderColor = 'rgba(80,208,128,0.5)';
   }
 }
 
@@ -172,6 +178,8 @@ function buildOverlay() {
       results.forEach(function(r) {
         S.pushOrder({
           id:             S.nextOid(),
+          did1:           r.did1 || '',
+          did2:           r.did2 || '',
           filename:       r.filename,
           fileHandle:     r.fileHandle,
           doNumber:       r.doNumber,
@@ -724,6 +732,11 @@ function buildSavePayload() {
     return { id: n.id, type: n.type, label: n.label, x: n.x, y: n.y,
              params: JSON.parse(JSON.stringify(n.params || {})) };
   });
+
+  // Retrieve DIDs from the active order slot — they must not be regenerated
+  var activeId = S.getActiveOrderId();
+  var order    = activeId ? S.findOrder(function(o) { return o.id === activeId; }) : null;
+
   return {
     _version:    SAVE_VERSION,
     _type:       'forgeworks-mfg-review',
@@ -731,6 +744,8 @@ function buildSavePayload() {
     _unitSystem: S.getUnitSystem(),
     _nid:        S.getNid(),
     _cid:        S.getCid(),
+    _did1:       order ? (order.did1 || '') : '',
+    _did2:       order ? (order.did2 || '') : '',
     general:     JSON.parse(JSON.stringify(S.getGeneral())),
     nodes:       nodeSnapshot,
     connections: JSON.parse(JSON.stringify(S.getConnections())),
@@ -746,7 +761,13 @@ function downloadOrderJson(payload) {
   var blob = new Blob([json], { type: 'application/json' });
   var url  = URL.createObjectURL(blob);
   var a    = document.createElement('a');
-  a.download = FS.buildOrderFilename(S.getGeneral());
+
+  // Reuse the existing filename if the order has already been saved before,
+  // so the download timestamp matches the original creation time
+  var activeId = S.getActiveOrderId();
+  var order    = activeId ? S.findOrder(function(o) { return o.id === activeId; }) : null;
+  a.download   = (order && order.filename) ? order.filename : FS.buildOrderFilename(S.getGeneral());
+
   a.href = url;
   document.body.appendChild(a);
   a.click();
@@ -760,8 +781,8 @@ function downloadOrderJson(payload) {
 // ---------------------------------------------------------------------------
 
 function saveActiveOrder() {
-  var payload    = buildSavePayload();
-  var activeId   = S.getActiveOrderId();
+  var payload      = buildSavePayload();
+  var activeId     = S.getActiveOrderId();
   var folderHandle = S.getWorkingFolderHandle();
 
   if (!folderHandle) {
@@ -770,26 +791,48 @@ function saveActiveOrder() {
     return;
   }
 
-  var order    = activeId ? S.findOrder(function(o) { return o.id === activeId; }) : null;
-  var filename = (order && order.filename) ? order.filename : FS.buildOrderFilename(S.getGeneral());
+  var order = activeId ? S.findOrder(function(o) { return o.id === activeId; }) : null;
 
-  FS.saveOrderToFolder(folderHandle, filename, payload, order && order.filename ? { forceOverwrite: true } : {})
+  // Build the correct filename for the current state:
+  //   - Timestamp is locked at first save (stored in order.saveTimestamp)
+  //   - DO number in the filename always reflects the current doNumber
+  var currentDo = S.getGeneral().doNumber || 'UNKNOWN';
+
+  if (!order.saveTimestamp) {
+    // First save — generate and lock the timestamp now
+    var now = new Date();
+    var h   = String(now.getHours()).padStart(2, '0');
+    var m   = String(now.getMinutes()).padStart(2, '0');
+    var s   = String(now.getSeconds()).padStart(2, '0');
+    order.saveTimestamp = now.toISOString().slice(0, 10) + '_' + h + 'h' + m + 'm' + s + 's';
+  }
+
+  var newFilename = 'DO_' + currentDo + '_' + order.saveTimestamp + '.json';
+  var oldFilename = order.filename || null;
+  var doNumberChanged = oldFilename && oldFilename !== newFilename;
+
+  FS.saveOrderToFolder(folderHandle, newFilename, payload, { forceOverwrite: true })
     .then(function(fileHandle) {
-      if (order) {
-        order.fileHandle = fileHandle;
-        order.filename   = filename;
-        order.loaded     = true;
-        order.isDirty    = false;
-        // Keep summary metadata in sync
-        order.doNumber    = S.getGeneral().doNumber;
-        order.partNumber  = S.getGeneral().partNumber;
-        order.partName    = S.getGeneral().partName;
-        order.status      = S.getGeneral().status;
+      // Delete the old file if the filename changed
+      if (doNumberChanged && order.fileHandle) {
+        FS.deleteOrderFile(order.fileHandle).catch(function(err) {
+          console.warn('forgeworks: could not delete old file after rename:', err.message);
+        });
       }
+
+      order.fileHandle  = fileHandle;
+      order.filename    = newFilename;
+      order.loaded      = true;
+      order.isDirty     = false;
+      order.doNumber    = currentDo;
+      order.partNumber  = S.getGeneral().partNumber;
+      order.partName    = S.getGeneral().partName;
+      order.status      = S.getGeneral().status;
+
       S.setIsDirty(false);
       refreshOrdersPanel();
       refreshStatusBadge();
-      showToast('Saved — ' + filename);
+      showToast('Saved — ' + newFilename);
     })
     .catch(function(err) {
       showToast('Save failed: ' + err.message + '\nFalling back to download.');
@@ -894,6 +937,37 @@ function applyPayloadToState(payload) {
     if (payload.general.totalQuantity  === undefined) payload.general.totalQuantity  = 0;
     if (payload.general.batchQuantity  === undefined) payload.general.batchQuantity  = 0;
     if (payload.general.batchNotes     === undefined) payload.general.batchNotes     = '';
+  }
+
+  // DID migration: old files without DIDs get them generated now and saved on
+  // next write. This ensures every order has stable identifiers going forward.
+  var did1 = payload._did1 || DON.generateDID1();
+  var did2 = payload._did2 || DON.generateDID2();
+
+  // Store DIDs on the active order slot so they persist and are included in saves
+  var activeId = S.getActiveOrderId();
+  if (activeId) {
+    var slot = S.findOrder(function(o) { return o.id === activeId; });
+    if (slot) {
+      slot.did1 = did1;
+      slot.did2 = did2;
+
+      // Restore saveTimestamp from the existing filename so re-saves keep
+      // the original timestamp rather than generating a new one.
+      // Filename format: DO_<doNumber>_<YYYY-MM-DD>_<HHhMMmSSs>.json
+      if (slot.filename && !slot.saveTimestamp) {
+        var parts = slot.filename.replace(/\.json$/i, '').split('_');
+        // parts: ['DO', doNumber_portion, 'YYYY-MM-DD', 'HHhMMmSSs']
+        // The timestamp is always the last two underscore-separated parts
+        if (parts.length >= 2) {
+          var datePart = parts[parts.length - 2];
+          var timePart = parts[parts.length - 1];
+          if (/^\d{4}-\d{2}-\d{2}$/.test(datePart) && /^\d{2}h\d{2}m\d{2}s$/.test(timePart)) {
+            slot.saveTimestamp = datePart + '_' + timePart;
+          }
+        }
+      }
+    }
   }
 
   S.resetGeneral();
@@ -1689,6 +1763,8 @@ function buildExampleOrder() {
   return {
     id:             'example-order',
     isExample:      true,
+    did1:           'FW-0000000000000-EXAMPLE',
+    did2:           '00000000-0000-4000-8000-000000000000',
     filename:       null,
     fileHandle:     null,
     doNumber:       'EXAMPLE',

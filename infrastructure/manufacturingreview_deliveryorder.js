@@ -278,6 +278,8 @@ export function scanFolder(dirHandle) {
               status:         g.status         || 'draft',
               dateCreated:    g.dateCreated    || '',
               version:        parsed._version  || '1.0',
+              did1:           parsed._did1     || '',
+              did2:           parsed._did2     || '',
               isParent:       !!g.isParent,
               isChild:        !!g.isChild,
               parentDoNumber: g.parentDoNumber || null,
@@ -435,30 +437,28 @@ export function deleteOrderFile(fileHandle) {
 // ---------------------------------------------------------------------------
 
 /**
- * Generate a safe default filename for a delivery order based on its general
- * metadata. Used when saving a new order that does not yet have a filename.
+ * Generate a safe default filename for a delivery order.
  *
- * Format: <doNumber>_<YYYY-MM-DD>_<HHmmss>.json
- * The timestamp is taken from the current moment so each save is unique.
- * Non-alphanumeric characters in the DO number are replaced with hyphens.
+ * Format: DO_<doNumber>_<YYYY-MM-DD>_<HHhMMmSSs>.json
+ * Underscores separate major segments (DO number, date, time).
+ * The hyphen in child DO numbers (e.g. 000001-02) is preserved as-is.
+ *
+ * Examples:
+ *   DO_000001_2025-03-24_14h30m22s.json        (standalone / parent)
+ *   DO_000001-02_2025-03-24_14h30m22s.json     (child batch)
  *
  * @param {object} general  The general state object (doNumber, etc.)
- * @returns {string}        e.g. "DO-2025-001_2025-03-24_143022.json"
+ * @returns {string}
  */
 export function buildOrderFilename(general) {
-  function sanitize(s) {
-    return String(s || '').trim().replace(/[^a-zA-Z0-9\-_]/g, '-').replace(/-+/g, '-').replace(/^-|-$/g, '');
-  }
-
   var now  = new Date();
-  var date = now.toISOString().slice(0, 10);                          // YYYY-MM-DD
-  var time = now.toTimeString().slice(0, 8).replace(/:/g, '');        // HHmmss
+  var date = now.toISOString().slice(0, 10);   // YYYY-MM-DD
+  var h    = String(now.getHours()).padStart(2, '0');
+  var m    = String(now.getMinutes()).padStart(2, '0');
+  var s    = String(now.getSeconds()).padStart(2, '0');
+  var time = h + 'h' + m + 'm' + s + 's';
 
-  var doNum = sanitize(general.doNumber);
-  var parts = [];
-  if (doNum) parts.push(doNum);
-  parts.push(date);
-  parts.push(time);
+  var doNum = String(general.doNumber || '').trim() || 'UNKNOWN';
 
-  return parts.join('_') + '.json';
+  return 'DO_' + doNum + '_' + date + '_' + time + '.json';
 }
