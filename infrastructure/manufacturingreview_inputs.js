@@ -35,8 +35,13 @@ import * as FS from './manufacturingreview_deliveryorder.js';
 import * as DON from './manufacturingreview_donumber.js';
 
 // ---------------------------------------------------------------------------
-// Injected cross-panel refresh callbacks (set once via init())
+// Persistent collapse state for collapsible sections in the General tab.
+// Keyed by section title — survives panel rebuilds triggered by outside clicks.
 // ---------------------------------------------------------------------------
+
+var _sectionOpenState = {};
+
+
 
 var _refreshRightPanel  = function() {};
 var _refreshCalcPanel   = function() {};
@@ -236,7 +241,8 @@ function buildLockedPlaceholder(msg) {
 // ---------------------------------------------------------------------------
 
 function buildCollapsibleSection(title, fields, startOpen) {
-  var open = startOpen !== false;
+  // Read persisted state if available, otherwise use startOpen (default true)
+  var open = title in _sectionOpenState ? _sectionOpenState[title] : (startOpen !== false);
   var section = document.createElement('div');
   Object.assign(section.style, { display: 'flex', flexDirection: 'column', gap: '8px' });
 
@@ -322,6 +328,7 @@ function buildCollapsibleSection(title, fields, startOpen) {
 
   hdr.addEventListener('click', function() {
     open = !open;
+    _sectionOpenState[title] = open;
     applyState(true);
   });
 
