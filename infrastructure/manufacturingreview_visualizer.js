@@ -85,6 +85,25 @@ export function buildVisualizerPanel() {
   var rightGroup = document.createElement('div');
   Object.assign(rightGroup.style, { display: 'flex', alignItems: 'center', gap: '10px' });
 
+  // Grid plane selector
+  var planeSel = document.createElement('select');
+  Object.assign(planeSel.style, {
+    background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.15)',
+    borderRadius: '2px', color: '#7a9aaa', fontSize: '8px', letterSpacing: '1px',
+    padding: '3px 6px', cursor: 'pointer', fontFamily: 'inherit', outline: 'none',
+  });
+  [['xz','XZ Plane'],['xy','XY Plane'],['zy','ZY Plane']].forEach(function(opt) {
+    var o = document.createElement('option');
+    o.value = opt[0]; o.textContent = opt[1];
+    if (opt[0] === _gridPlane) o.selected = true;
+    planeSel.appendChild(o);
+  });
+  planeSel.addEventListener('change', function() {
+    _gridPlane = planeSel.value;
+    if (_scene) _buildSimpleGrid(_gridPlane);
+  });
+  rightGroup.appendChild(planeSel);
+
   // Axis label mode dropdown
   var axisSel = document.createElement('select');
   Object.assign(axisSel.style, {
@@ -303,8 +322,8 @@ function _initThree() {
   fill.position.set(-1, 0.5, -1);
   _scene.add(fill);
 
-  // Grid — shader-based with labels (matches forge floor aesthetic)
-  _buildGrid();
+  // Simple fixed grid
+  _buildSimpleGrid(_gridPlane);
 
   // Camera
   _camera = new THREE.PerspectiveCamera(45, w / h, 0.1, 100000);
@@ -391,319 +410,310 @@ function _fitCamera(obj) {
 }
 
 // ---------------------------------------------------------------------------
-// Grid — shader-based infinite grid with fade + axis labels (matches forge floor)
+// Grid — simple LineSegments-based grid, three opacity tiers
 // ---------------------------------------------------------------------------
 
-var _gridMaterial  = null;
-var _labelGroup    = null;
-var _labelPool     = [];     // recycled sprites for numeric labels
-var _axisLabels    = {};     // { xLabel, yLabel, originLabel }
+// ── Tune these values to change the grid appearance ───────────────────────
+var GRID_CFG = {
+  extent:       500,    // grid extends ±this many units from origin each direction
+  minorStep:    10,     // spacing between minor lines
+  majorStep:    50,     // spacing between major lines (must be a multiple of minorStep)
+  axisOpacity:  0.90,   // axis lines (x=0, z=0 etc)
+  majorOpacity: 0.38,   // major grid lines
+  minorOpacity: 0.10,   // minor grid lines
+  gridColor:    0x445566,  // color for all non-axis grid lines
+  spriteScale:  10,     // world-unit size of numeric sprites
+  labelOffset:  8,      // how far off-axis the numeric labels sit (world units)
+};
+// ─────────────────────────────────────────────────────────────────────────
 
-function _buildGrid() {
-  var geo = new THREE.PlaneGeometry(20000, 20000);
+var _gridGroup    = null;
+var _gridPlane    = 'xz';
+var _gridSprites  = [];
+var _fadeSphere   = null;   // THREE.Mesh — BackSide sphere, fades grid in world space
 
-  _gridMaterial = new THREE.ShaderMaterial({
+// ---------------------------------------------------------------------------
+// Simple fixed grid — three opacity tiers, no adaptive snapping
+// ---------------------------------------------------------------------------
+
+/** Make a simple canvas text sprite. Created once per grid build, not updated. */
+function _makeSprite(text, color) {
+  var canvas = document.createElement('canvas');
+  canvas.width = 128; canvas.height = 128;
+  var ctx = canvas.getContext('2d');
+  ctx.clearRect(0, 0, 128, 128);
+  ctx.font = 'bold 56px Consolas, monospace';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillStyle = color || '#ffffff';
+  ctx.fillText(text, 64, 64);
+  var tex = new THREE.CanvasTexture(canvas);
+  tex.minFilter = THREE.LinearFilter;
+  var mat = new THREE.SpriteMaterial({ map: tex, transparent: true, depthTest: false });
+  var spr = new THREE.Sprite(mat);
+  spr.scale.set(GRID_CFG.spriteScale, GRID_CFG.spriteScale, 1);
+  return spr;
+}
+
+/**
+ * Build (or rebuild) the grid for the given plane.
+ * Disposes the old grid group first.
+ * plane: 'xz' | 'xy' | 'zy'
+ */
+function _buildSimpleGrid(plane) {
+  // ── Dispose old grid ────────────────────────────────────────────────────
+  if (_gridGroup) {
+    _scene.remove(_gridGroup);
+    _gridGroup.traverse(function(obj) {
+      if (obj.geometry) obj.geometry.dispose();
+      if (obj.material) {
+        if (Array.isArray(obj.material)) obj.material.forEach(function(m){ m.dispose(); });
+        else obj.material.dispose();
+      }
+    });
+    _gridGroup = null;
+    _gridSprites = [];
+  }
+
+  var cfg  = GRID_CFG;
+  var ext  = cfg.extent;
+  var minS = cfg.minorStep;
+  var majS = cfg.majorStep;
+
+  // ── Helpers ─────────────────────────────────────────────────────────────
+  function makeLines(verts, color, opacity) {
+    if (!verts.length) return null;
+    var geo = new THREE.BufferGeometry();
+    geo.setAttribute('position', new THREE.Float32BufferAttribute(new Float32Array(verts), 3));
+    var mat = new THREE.LineBasicMaterial({ color: color, transparent: true, opacity: opacity, depthWrite: false });
+    return new THREE.LineSegments(geo, mat);
+  }
+
+  // Axis colors: X=red, Y=green, Z=blue
+  var COLOR_X   = 0xff3333;
+  var COLOR_Y   = 0x22dd66;
+  var COLOR_Z   = 0x3366ff;
+
+  var group = new THREE.Group();
+  var minorV = [], majorV = [];
+
+  // ── Build geometry per plane ─────────────────────────────────────────────
+  if (plane === 'xz') {
+    // Horizontal plane at y=0
+    // Lines parallel to Z (x = v)
+    for (var x = -ext; x <= ext; x += minS) {
+      if (x === 0) continue;
+      var vm = x % majS === 0 ? majorV : minorV;
+      vm.push(x,0,-ext, x,0,ext);
+    }
+    // Lines parallel to X (z = v)
+    for (var z = -ext; z <= ext; z += minS) {
+      if (z === 0) continue;
+      var vm2 = z % majS === 0 ? majorV : minorV;
+      vm2.push(-ext,0,z, ext,0,z);
+    }
+    // Axis lines
+    group.add(makeLines([-ext,0,0, ext,0,0], COLOR_X, cfg.axisOpacity));  // X axis
+    group.add(makeLines([0,0,-ext, 0,0,ext], COLOR_Z, cfg.axisOpacity));  // Z axis
+
+    // Sprite labels — along X axis (at z = labelOffset) and Z axis (at x = labelOffset)
+    for (var lx = -ext; lx <= ext; lx += majS) {
+      var spr = _makeSprite(String(lx), lx === 0 ? '#ffffff' : '#ff6666');
+      spr.position.set(lx, 1, cfg.labelOffset);
+      group.add(spr); _gridSprites.push(spr);
+    }
+    for (var lz = -ext; lz <= ext; lz += majS) {
+      if (lz === 0) continue;  // origin already covered
+      var sprz = _makeSprite(String(lz), '#6699ff');
+      sprz.position.set(cfg.labelOffset, 1, lz);
+      group.add(sprz); _gridSprites.push(sprz);
+    }
+
+  } else if (plane === 'xy') {
+    // Vertical plane at z=0
+    // Lines parallel to Y (x = v)
+    for (var x2 = -ext; x2 <= ext; x2 += minS) {
+      if (x2 === 0) continue;
+      var vm3 = x2 % majS === 0 ? majorV : minorV;
+      vm3.push(x2,-ext,0, x2,ext,0);
+    }
+    // Lines parallel to X (y = v)
+    for (var y2 = -ext; y2 <= ext; y2 += minS) {
+      if (y2 === 0) continue;
+      var vm4 = y2 % majS === 0 ? majorV : minorV;
+      vm4.push(-ext,y2,0, ext,y2,0);
+    }
+    // Axis lines
+    group.add(makeLines([-ext,0,0, ext,0,0], COLOR_X, cfg.axisOpacity));  // X axis
+    group.add(makeLines([0,-ext,0, 0,ext,0], COLOR_Y, cfg.axisOpacity));  // Y axis
+
+    // Sprite labels
+    for (var lx2 = -ext; lx2 <= ext; lx2 += majS) {
+      var sprx2 = _makeSprite(String(lx2), lx2 === 0 ? '#ffffff' : '#ff6666');
+      sprx2.position.set(lx2, cfg.labelOffset, 1);
+      group.add(sprx2); _gridSprites.push(sprx2);
+    }
+    for (var ly2 = -ext; ly2 <= ext; ly2 += majS) {
+      if (ly2 === 0) continue;
+      var spry2 = _makeSprite(String(ly2), '#66cc88');
+      spry2.position.set(cfg.labelOffset, ly2, 1);
+      group.add(spry2); _gridSprites.push(spry2);
+    }
+
+  } else if (plane === 'zy') {
+    // Vertical plane at x=0
+    // Lines parallel to Y (z = v)
+    for (var z3 = -ext; z3 <= ext; z3 += minS) {
+      if (z3 === 0) continue;
+      var vm5 = z3 % majS === 0 ? majorV : minorV;
+      vm5.push(0,-ext,z3, 0,ext,z3);
+    }
+    // Lines parallel to Z (y = v)
+    for (var y3 = -ext; y3 <= ext; y3 += minS) {
+      if (y3 === 0) continue;
+      var vm6 = y3 % majS === 0 ? majorV : minorV;
+      vm6.push(0,y3,-ext, 0,y3,ext);
+    }
+    // Axis lines
+    group.add(makeLines([0,0,-ext, 0,0,ext], COLOR_Z, cfg.axisOpacity));  // Z axis
+    group.add(makeLines([0,-ext,0, 0,ext,0], COLOR_Y, cfg.axisOpacity));  // Y axis
+
+    // Sprite labels
+    for (var lz3 = -ext; lz3 <= ext; lz3 += majS) {
+      var sprz3 = _makeSprite(String(lz3), lz3 === 0 ? '#ffffff' : '#6699ff');
+      sprz3.position.set(1, cfg.labelOffset, lz3);
+      group.add(sprz3); _gridSprites.push(sprz3);
+    }
+    for (var ly3 = -ext; ly3 <= ext; ly3 += majS) {
+      if (ly3 === 0) continue;
+      var spry3 = _makeSprite(String(ly3), '#66cc88');
+      spry3.position.set(1, ly3, cfg.labelOffset);
+      group.add(spry3); _gridSprites.push(spry3);
+    }
+  }
+
+  // Add minor and major lines to group
+  var minorLines = makeLines(minorV, cfg.gridColor, cfg.minorOpacity);
+  if (minorLines) group.add(minorLines);
+  var majorLines = makeLines(majorV, cfg.gridColor, cfg.majorOpacity);
+  if (majorLines) group.add(majorLines);
+
+  // ── Perpendicular axis — the axis that pokes through the grid plane ────────
+  if (plane === 'xz') {
+    // Y axis pokes through the XZ plane vertically
+    group.add(makeLines([0,-ext,0, 0,ext,0], COLOR_Y, cfg.axisOpacity));
+  } else if (plane === 'xy') {
+    // Z axis pokes through the XY plane
+    group.add(makeLines([0,0,-ext, 0,0,ext], COLOR_Z, cfg.axisOpacity));
+  } else {
+    // X axis pokes through the ZY plane
+    group.add(makeLines([-ext,0,0, ext,0,0], COLOR_X, cfg.axisOpacity));
+  }
+
+  _gridGroup = group;
+  _scene.add(_gridGroup);
+
+  // ── Radial fade mask ──────────────────────────────────────────────────────
+  // A large plane sitting on the grid, same orientation.
+  // The fragment shader computes 2D distance from the origin in the plane's
+  // coordinate space — this is the intersection circle of a sphere with the plane.
+  //   dist < uInner  → transparent (grid shows through)
+  //   uInner–uOuter  → smoothstep fade
+  //   dist > uOuter  → fully opaque (background colour — hides grid)
+  if (_fadeSphere) {
+    _scene.remove(_fadeSphere);
+    _fadeSphere.geometry.dispose();
+    _fadeSphere.material.dispose();
+    _fadeSphere = null;
+  }
+
+  // The two world-space coordinates that measure distance in this plane
+  var distLine = plane === 'xz' ? 'float dist = length(vec2(vWorldPos.x, vWorldPos.z));'
+               : plane === 'xy' ? 'float dist = length(vec2(vWorldPos.x, vWorldPos.y));'
+               :                  'float dist = length(vec2(vWorldPos.z, vWorldPos.y));';
+
+  var fadeMat = new THREE.ShaderMaterial({
     uniforms: {
-      uCamGround:  { value: new THREE.Vector2(0, 0) },
-      uFadeStart:  { value: 100.0 },
-      uFadeEnd:    { value: 500.0 },
-      uGridUnit:   { value: 1.0 },   // mm per minor grid square
-      uMinorFade:  { value: 1.0 },   // 0 = major only, 1 = minor fully visible
+      uInner: { value: ext * 0.60 },   // ← inner radius — grid fully visible inside this
+      uOuter: { value: ext * 0.95 },   // ← outer radius — grid fully hidden outside this
     },
     vertexShader: [
-      'varying vec2 vWorldXZ;',
+      'varying vec3 vWorldPos;',
       'void main() {',
       '  vec4 wp = modelMatrix * vec4(position, 1.0);',
-      '  vWorldXZ = wp.xz;',
+      '  vWorldPos = wp.xyz;',
       '  gl_Position = projectionMatrix * viewMatrix * wp;',
       '}',
     ].join('\n'),
     fragmentShader: [
-      'varying vec2 vWorldXZ;',
-      'uniform vec2 uCamGround;',
-      'uniform float uFadeStart;',
-      'uniform float uFadeEnd;',
-      'uniform float uGridUnit;',
-      'uniform float uMinorFade;',
-      '',
-      'float gridLine(float coord, float width) {',
-      '  float d = abs(fract(coord + 0.5) - 0.5);',
-      '  float fw = fwidth(coord);',
-      '  return 1.0 - smoothstep(width - fw, width + fw, d);',
-      '}',
-      '',
+      'varying vec3 vWorldPos;',
+      'uniform float uInner;',
+      'uniform float uOuter;',
       'void main() {',
-      '  float dist = distance(vWorldXZ, uCamGround);',
-      '  float t = clamp((dist - uFadeStart) / (uFadeEnd - uFadeStart), 0.0, 1.0);',
-      '  float fade = 1.0 - t * t * (3.0 - 2.0 * t);',
-      '  if (fade < 0.005) discard;',
-      '',
-      '  vec2 scaled = vWorldXZ / uGridUnit;',
-      '',
-      '  // Minor lines — every 1 unit, fade out when zoomed out',
-      '  float thinX = gridLine(scaled.x, 0.04);',
-      '  float thinZ = gridLine(scaled.y, 0.04);',
-      '  float thin = max(thinX, thinZ) * uMinorFade;',
-      '',
-      '  // Major lines — every 10 units, always visible',
-      '  float boldX = gridLine(scaled.x / 10.0, 0.008);',
-      '  float boldZ = gridLine(scaled.y / 10.0, 0.008);',
-      '  float bold = max(boldX, boldZ);',
-      '',
-      '  // Axis lines — thicker, brighter',
-      '  float fwX = fwidth(vWorldXZ.y);',
-      '  float fwZ = fwidth(vWorldXZ.x);',
-      '  float onX = 1.0 - smoothstep(0.10 - fwX, 0.10 + fwX, abs(vWorldXZ.y));',
-      '  float onZ = 1.0 - smoothstep(0.10 - fwZ, 0.10 + fwZ, abs(vWorldXZ.x));',
-      '',
-      '  vec3 thinColor = vec3(0.30, 0.33, 0.38);',
-      '  vec3 boldColor = vec3(0.55, 0.60, 0.68);',
-      '  vec3 xAxisColor = vec3(1.0, 0.20, 0.20);',
-      '  vec3 zAxisColor = vec3(0.20, 0.48, 1.0);',
-      '',
-      '  vec3 col = thinColor;',
-      '  float alpha = thin * 0.35;',
-      '  col = mix(col, boldColor, bold);',
-      '  alpha = max(alpha, bold * 0.70);',
-      '  col = mix(col, xAxisColor, onX);',
-      '  alpha = max(alpha, onX * 0.90);',
-      '  col = mix(col, zAxisColor, onZ);',
-      '  alpha = max(alpha, onZ * 0.90);',
-      '  alpha *= fade;',
+      '  ' + distLine,
+      '  float t = clamp((dist - uInner) / (uOuter - uInner), 0.0, 1.0);',
+      '  float alpha = t * t * (3.0 - 2.0 * t);',  // smoothstep
       '  if (alpha < 0.005) discard;',
-      '  gl_FragColor = vec4(col, alpha);',
+      '  gl_FragColor = vec4(0.016, 0.031, 0.055, alpha);',
       '}',
     ].join('\n'),
     transparent: true,
     depthWrite:  false,
     side:        THREE.DoubleSide,
-    extensions:  { derivatives: true },
   });
 
-  var gridPlane = new THREE.Mesh(geo, _gridMaterial);
-  gridPlane.rotation.x = -Math.PI / 2;
-  gridPlane.position.y = -0.5;    // sit slightly below the part origin
-  _scene.add(gridPlane);
+  var fadeGeo   = new THREE.PlaneGeometry(ext * 4, ext * 4);
+  var fadeMesh  = new THREE.Mesh(fadeGeo, fadeMat);
 
-  // ── Y axis — vertical green line through origin ───────────────────────────
-  var yAxisGeo = new THREE.BufferGeometry().setFromPoints([
-    new THREE.Vector3(0, -2000, 0),
-    new THREE.Vector3(0,  2000, 0),
-  ]);
-  var yAxisMat = new THREE.LineBasicMaterial({ color: 0x22dd66, transparent: true, opacity: 0.85, depthWrite: false });
-  _scene.add(new THREE.Line(yAxisGeo, yAxisMat));
-
-  // ── Label sprites — numeric pool only (axis names are HTML overlays) ──────
-  _labelGroup = new THREE.Group();
-  _scene.add(_labelGroup);
-
-  var poolSize = 80;
-  for (var i = 0; i < poolSize; i++) {
-    var spr = _makeTextSprite('0', '#888888');
-    spr.visible = false;
-    _labelGroup.add(spr);
-    _labelPool.push(spr);
+  // Rotate to lie on the same plane as the grid
+  if (plane === 'xz') {
+    fadeMesh.rotation.x = -Math.PI / 2;
+    fadeMesh.position.y = 0.2;
+  } else if (plane === 'xy') {
+    fadeMesh.position.z = 0.2;
+  } else {
+    fadeMesh.rotation.y = Math.PI / 2;
+    fadeMesh.position.x = 0.2;
   }
 
-  // Origin marker sprite (small "0" at grid origin)
-  _axisLabels.origin = _makeTextSprite('0', '#aabbcc', 0.9);
-  _axisLabels.origin.visible = false;
-  _labelGroup.add(_axisLabels.origin);
+  // Store material ref so _updateGrid can scale the radii with camera distance
+  fadeMesh.userData.fadeMat = fadeMat;
+  group.add(fadeMesh);  // part of the group — disposed automatically on rebuild
+
+  // Keep a reference for _updateGrid
+  _fadeSphere = fadeMesh;
 }
 
-/**
- * Recompute grid density and label positions based on current camera height.
- * Call every frame from the animation loop.
- */
+// Scale the fade radii with camera distance each frame so the visible circle
+// always shows the grid around the orbit target at a consistent screen size.
 function _updateGrid() {
-  if (!_gridMaterial || !_camera) return;
+  if (!_fadeSphere || !_camera || !_controls) return;
 
-  // ─────────────────────────────────────────────────────────────────────────
-  // GRID VISUAL SETTINGS — tweak these to adjust the look
-  // ─────────────────────────────────────────────────────────────────────────
-  var CFG = {
-    // How many minor grid divisions are "ideal" across the visible area
-    // Lower = coarser grid, Higher = finer grid
-    minorDivisionsTarget:  10,
-
-    // Fraction of camera distance used for fade start/end
-    fadeStartFraction:  0.5,
-    fadeEndFraction:    1.8,
-
-    // Minor lines fade out when they'd be smaller than this fraction of viewport
-    // 0.008 = start fading when minor lines are ~0.8% of view width apart
-    minorFadeIn:   0.008,   // below this → fully hidden
-    minorFadeOut:  0.016,   // above this → fully visible
-
-    // Sprite size as a fraction of camera distance (so they stay same screen size)
-    numericSpriteScale: 0.045,   // for the axis number labels
-    axisSpriteScale:    0.06,    // for the X / Y / Z name labels
-
-    // All axis labels and numbers share this opacity
-    labelOpacity:  0.90,
-
-    // Y label floats at this fraction of camera distance above origin
-    // (currently unused — Y label is pinned to AX/AY/AZ above)
-
-    // Labels sit this many units above the grid plane
-    labelY: 1.0,
-  };
-  // ─────────────────────────────────────────────────────────────────────────
-
-  var target = _controls ? _controls.target : new THREE.Vector3();
+  var target = _controls.target;
   var height = _camera.position.distanceTo(target);
 
-  // Choose minor grid unit — snap to clean engineering values
-  var SNAPS = [1, 2, 5, 10, 20, 50, 100, 200, 500, 1000, 2000, 5000];
-  var desiredMinorSpacing = height / CFG.minorDivisionsTarget;
-  var unit = SNAPS[SNAPS.length - 1];
-  for (var si = 0; si < SNAPS.length; si++) {
-    if (SNAPS[si] >= desiredMinorSpacing) { unit = SNAPS[si]; break; }
-  }
-
-  var majorUnit  = unit * 10;
-  var fadeStart  = height * CFG.fadeStartFraction;
-  var fadeEnd    = height * CFG.fadeEndFraction;
-
-  // Minor fade — crossfade minor lines in/out based on screen density
-  var minorScreenSize = unit / height;
-  var minorFade = Math.min(1.0, Math.max(0.0,
-    (minorScreenSize - CFG.minorFadeIn) / (CFG.minorFadeOut - CFG.minorFadeIn)
-  ));
-
-  _gridMaterial.uniforms.uCamGround.value.set(target.x, target.z);
-  _gridMaterial.uniforms.uFadeStart.value  = fadeStart;
-  _gridMaterial.uniforms.uFadeEnd.value    = fadeEnd;
-  _gridMaterial.uniforms.uGridUnit.value   = unit;
-  _gridMaterial.uniforms.uMinorFade.value  = minorFade;
-
-  // Sprite world sizes — proportional to camera distance
-  var numSize  = height * CFG.numericSpriteScale;
-  var labelY   = CFG.labelY;
-
-  // Label step: use minor unit when lines are visible, major unit when zoomed out
-  var labelStep = minorFade > 0.3 ? unit : majorUnit;
-
-  // ── Number labels ─────────────────────────────────────────────────────────
-  var poolIdx = 0;
-  for (var pi = 0; pi < _labelPool.length; pi++) _labelPool[pi].visible = false;
-
-  if (_axisLabelMode === 'none') {
-    if (_axisLabels.origin) _axisLabels.origin.visible = false;
-    return;
-  }
-
-  var hasNegNums = _axisLabelMode === 'neg_screen' || _axisLabelMode === 'neg_part';
-  var onPart     = (_axisLabelMode === 'part' || _axisLabelMode === 'neg_part') && _currentMesh;
-
-  if (onPart) {
-    // ── Part mode: labels at the bbox extents on each axis ──────────────────
-    var bbox = new THREE.Box3().setFromObject(_currentMesh);
-
-    var partPoints = [
-      { val: bbox.max.x, pos: new THREE.Vector3(bbox.max.x, labelY, 0), color: '#ff5555' },
-      { val: bbox.max.y, pos: new THREE.Vector3(0, bbox.max.y,        0), color: '#44cc77' },
-      { val: bbox.max.z, pos: new THREE.Vector3(0, labelY, bbox.max.z), color: '#5599ff' },
-    ];
-
-    if (hasNegNums) {
-      partPoints.push(
-        { val: bbox.min.x, pos: new THREE.Vector3(bbox.min.x, labelY, 0), color: '#ff5555' },
-        { val: bbox.min.y, pos: new THREE.Vector3(0, bbox.min.y,        0), color: '#44cc77' },
-        { val: bbox.min.z, pos: new THREE.Vector3(0, labelY, bbox.min.z), color: '#5599ff' }
-      );
-    }
-
-    partPoints.forEach(function(pt) {
-      if (poolIdx >= _labelPool.length) return;
-      var spr = _labelPool[poolIdx++];
-      _updateSpriteText(spr, _fmtDim(Math.round(pt.val), unit), pt.color);
-      spr.scale.set(numSize, numSize, 1);
-      spr.position.copy(pt.pos);
-      spr.material.opacity = CFG.labelOpacity;
-      spr.visible = true;
-    });
-
-    if (_axisLabels.origin) _axisLabels.origin.visible = false;
-
+  // Move the mask to follow the orbit target on the correct axes for this plane
+  if (_gridPlane === 'xz') {
+    _fadeSphere.position.x = target.x;
+    _fadeSphere.position.y = 0.2;
+    _fadeSphere.position.z = target.z;
+  } else if (_gridPlane === 'xy') {
+    _fadeSphere.position.x = target.x;
+    _fadeSphere.position.y = target.y;
+    _fadeSphere.position.z = 0.2;
   } else {
-    // ── Screen mode: numbers on their axis at every label step ───────────────
-    // labelStep = minor unit when zoomed in, major unit when zoomed out
-    var range = fadeEnd * 0.80;
-    var minX  = Math.floor((target.x - range) / labelStep) * labelStep;
-    var maxX  = Math.ceil ((target.x + range) / labelStep) * labelStep;
-    var minZ  = Math.floor((target.z - range) / labelStep) * labelStep;
-    var maxZ  = Math.ceil ((target.z + range) / labelStep) * labelStep;
-
-    for (var lx = minX; lx <= maxX; lx += labelStep) {
-      if (poolIdx >= _labelPool.length) break;
-      if (lx === 0) continue;                  // origin marker handles 0
-      if (!hasNegNums && lx < 0) continue;
-      var dx  = lx - target.x, dzx = -target.z;
-      var dist = Math.sqrt(dx * dx + dzx * dzx);
-      if (dist > fadeEnd) continue;
-      var spr = _labelPool[poolIdx++];
-      var val = Math.round(lx);
-      // Major line labels are brighter, minor line labels are dimmer
-      var onMajor = (Math.round(lx / majorUnit) * majorUnit === Math.round(lx));
-      var col = val === 0 ? '#ffffff' : '#ff5555';
-      _updateSpriteText(spr, _fmtDim(val, unit), col);
-      spr.scale.set(numSize, numSize, 1);
-      spr.position.set(lx, labelY, 0);   // ON the X axis
-      var ft = Math.max(0, Math.min(1, (dist - fadeStart) / (fadeEnd - fadeStart)));
-      var baseOp = onMajor ? CFG.labelOpacity : CFG.labelOpacity * 0.55;
-      spr.material.opacity = (1.0 - ft * ft * (3.0 - 2.0 * ft)) * baseOp;
-      spr.visible = spr.material.opacity > 0.01;
-    }
-
-    for (var lz = minZ; lz <= maxZ; lz += labelStep) {
-      if (poolIdx >= _labelPool.length) break;
-      if (lz === 0) continue;
-      if (!hasNegNums && lz < 0) continue;
-      var dx2  = -target.x, dz2 = lz - target.z;
-      var dist2 = Math.sqrt(dx2 * dx2 + dz2 * dz2);
-      if (dist2 > fadeEnd) continue;
-      var spr2 = _labelPool[poolIdx++];
-      var val2 = Math.round(lz);
-      var onMajor2 = (Math.round(lz / majorUnit) * majorUnit === Math.round(lz));
-      _updateSpriteText(spr2, _fmtDim(val2, unit), '#5599ff');
-      spr2.scale.set(numSize, numSize, 1);
-      spr2.position.set(0, labelY, lz);   // ON the Z axis
-      var ft2 = Math.max(0, Math.min(1, (dist2 - fadeStart) / (fadeEnd - fadeStart)));
-      var baseOp2 = onMajor2 ? CFG.labelOpacity : CFG.labelOpacity * 0.55;
-      spr2.material.opacity = (1.0 - ft2 * ft2 * (3.0 - 2.0 * ft2)) * baseOp2;
-      spr2.visible = spr2.material.opacity > 0.01;
-    }
-
-    // Y-axis labels — step vertically from 0 upward (and downward for neg modes)
-    var minY = hasNegNums ? -Math.ceil(fadeEnd * 0.80 / labelStep) * labelStep : labelStep;
-    var maxY =              Math.ceil(fadeEnd * 0.80 / labelStep) * labelStep;
-    for (var ly = minY; ly <= maxY; ly += labelStep) {
-      if (poolIdx >= _labelPool.length) break;
-      if (ly === 0) continue;
-      if (!hasNegNums && ly < 0) continue;
-      var spr3 = _labelPool[poolIdx++];
-      var val3 = Math.round(ly);
-      var onMajor3 = (Math.round(ly / majorUnit) * majorUnit === Math.round(ly));
-      _updateSpriteText(spr3, _fmtDim(val3, unit), '#44cc77');
-      spr3.scale.set(numSize, numSize, 1);
-      spr3.position.set(0, ly, 0);   // ON the Y axis
-      var baseOp3 = onMajor3 ? CFG.labelOpacity : CFG.labelOpacity * 0.55;
-      spr3.material.opacity = baseOp3;
-      spr3.visible = true;
-    }
-
-    // Origin marker
-    if (_axisLabels.origin) {
-      _updateSpriteText(_axisLabels.origin, _fmtDim(0, unit), '#ffffff');
-      _axisLabels.origin.scale.set(numSize * 0.85, numSize * 0.85, 1);
-      _axisLabels.origin.position.set(0, labelY, 0);
-      _axisLabels.origin.material.opacity = CFG.labelOpacity;
-      _axisLabels.origin.visible = true;
-    }
+    _fadeSphere.position.x = 0.2;
+    _fadeSphere.position.y = target.y;
+    _fadeSphere.position.z = target.z;
   }
 
-  // HTML axis labels are updated separately in _updateHtmlAxisLabels()
+  var mat = _fadeSphere.userData.fadeMat;
+  if (!mat) return;
+
+  // Scale the two radii with camera distance
+  // Tune these fractions to adjust visible grid size and fade width
+  mat.uniforms.uInner.value = height * 0.50;
+  mat.uniforms.uOuter.value = height * 0.85;
 }
 
 /**
@@ -799,61 +809,12 @@ function _fmtDim(val, unit) {
 // Text sprite helpers — ported from forgehousebuilder.js
 // ---------------------------------------------------------------------------
 
-function _makeTextSprite(text, color, scaleMult) {
-  var canvas = document.createElement('canvas');
-  canvas.width = 256; canvas.height = 256;
-  var ctx = canvas.getContext('2d');
-  ctx.clearRect(0, 0, 256, 256);
-  ctx.font = 'bold 80px Consolas, monospace';
-  ctx.textAlign = 'center';
-  ctx.textBaseline = 'middle';
-  ctx.fillStyle = color || '#ffffff';
-  ctx.fillText(text, 128, 128);
-
-  var tex = new THREE.CanvasTexture(canvas);
-  tex.minFilter = THREE.LinearFilter;
-
-  var mat = new THREE.SpriteMaterial({ map: tex, transparent: true, depthTest: false });
-  var spr = new THREE.Sprite(mat);
-  var s = (scaleMult || 1.0) * 4.0;
-  spr.scale.set(s, s, 1);
-  spr.userData._canvas = canvas;
-  spr.userData._text   = text;
-  spr.userData._color  = color;
-  return spr;
-}
-
-function _updateSpriteText(sprite, text, color) {
-  if (sprite.userData._text === text && sprite.userData._color === color) return;
-  var canvas = sprite.userData._canvas;
-  if (!canvas) return;
-  var ctx = canvas.getContext('2d');
-  ctx.clearRect(0, 0, 256, 256);
-  ctx.font = 'bold 80px Consolas, monospace';
-  ctx.textAlign = 'center';
-  ctx.textBaseline = 'middle';
-  ctx.fillStyle = color || '#ffffff';
-  ctx.fillText(text, 128, 128);
-  sprite.material.map.needsUpdate = true;
-  sprite.userData._text  = text;
-  sprite.userData._color = color;
-}
-
 function _makeMaterial(color) {
   return new THREE.MeshStandardMaterial({
     color:     color || 0x8899aa,
     metalness: 0.55,
     roughness: 0.45,
     envMapIntensity: 0.5,
-  });
-}
-
-function _makeWireframe(color) {
-  return new THREE.MeshBasicMaterial({
-    color: color || 0x4466aa,
-    wireframe: true,
-    transparent: true,
-    opacity: 0.15,
   });
 }
 
@@ -1101,8 +1062,22 @@ export function geometryFromNodeStep(step) {
 export function destroyVisualizer() {
   if (_animFrame) cancelAnimationFrame(_animFrame);
   _clearMesh();
-  if (_gridMaterial) { _gridMaterial.dispose(); _gridMaterial = null; }
-  _labelPool = []; _axisLabels = {}; _labelGroup = null;
+  // Dispose grid
+  if (_gridGroup) {
+    if (_scene) _scene.remove(_gridGroup);
+    _gridGroup.traverse(function(obj) {
+      if (obj.geometry) obj.geometry.dispose();
+      if (obj.material) obj.material.dispose();
+    });
+    _gridGroup = null;
+    _gridSprites = [];
+  }
+  if (_fadeSphere) {
+    if (_scene) _scene.remove(_fadeSphere);
+    _fadeSphere.geometry.dispose();
+    _fadeSphere.material.dispose();
+    _fadeSphere = null;
+  }
   if (_renderer) { _renderer.dispose(); _renderer = null; }
   _scene = null; _camera = null; _controls = null;
   _container = null; _canvas = null; _activeContext = null;
