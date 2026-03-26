@@ -637,6 +637,7 @@ function _updateGrid() {
 
     for (var lx = minX; lx <= maxX; lx += labelStep) {
       if (poolIdx >= _labelPool.length) break;
+      if (lx === 0) continue;                  // origin marker handles 0
       if (!hasNegNums && lx < 0) continue;
       var dx  = lx - target.x, dzx = -target.z;
       var dist = Math.sqrt(dx * dx + dzx * dzx);
@@ -674,8 +675,27 @@ function _updateGrid() {
       spr2.visible = spr2.material.opacity > 0.01;
     }
 
+    // Y-axis labels — step vertically from 0 upward (and downward for neg modes)
+    var minY = hasNegNums ? -Math.ceil(fadeEnd * 0.80 / labelStep) * labelStep : labelStep;
+    var maxY =              Math.ceil(fadeEnd * 0.80 / labelStep) * labelStep;
+    for (var ly = minY; ly <= maxY; ly += labelStep) {
+      if (poolIdx >= _labelPool.length) break;
+      if (ly === 0) continue;
+      if (!hasNegNums && ly < 0) continue;
+      var spr3 = _labelPool[poolIdx++];
+      var val3 = Math.round(ly);
+      var onMajor3 = (Math.round(ly / majorUnit) * majorUnit === Math.round(ly));
+      _updateSpriteText(spr3, _fmtDim(val3, unit), '#44cc77');
+      spr3.scale.set(numSize, numSize, 1);
+      spr3.position.set(0, ly, 0);   // ON the Y axis
+      var baseOp3 = onMajor3 ? CFG.labelOpacity : CFG.labelOpacity * 0.55;
+      spr3.material.opacity = baseOp3;
+      spr3.visible = true;
+    }
+
     // Origin marker
     if (_axisLabels.origin) {
+      _updateSpriteText(_axisLabels.origin, _fmtDim(0, unit), '#ffffff');
       _axisLabels.origin.scale.set(numSize * 0.85, numSize * 0.85, 1);
       _axisLabels.origin.position.set(0, labelY, 0);
       _axisLabels.origin.material.opacity = CFG.labelOpacity;
