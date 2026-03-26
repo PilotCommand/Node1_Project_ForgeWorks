@@ -1036,37 +1036,60 @@ function importJson() {
           return;
         }
 
-        // jobNumber → doNumber migration for v3.0 files
+        // v3.0 migration
         if (p.general && p.general.jobNumber && !p.general.doNumber) {
           p.general.doNumber = p.general.jobNumber;
         }
 
         var fileVer = parseFloat(p._version || '1.0');
+        var g       = p.general || {};
 
-        // Add as a new in-memory order and open it
-        var g = p.general || {};
+        // Read or generate DIDs — old files get new DIDs assigned now
+        var did1 = p._did1 || DON.generateDID1();
+        var did2 = p._did2 || DON.generateDID2();
+
+        // Parse saveTimestamp from filename so re-saves preserve the original timestamp
+        var saveTimestamp = null;
+        var fparts = file.name.replace(/\.json$/i, '').split('_');
+        if (fparts.length >= 2) {
+          var dp = fparts[fparts.length - 2];
+          var tp = fparts[fparts.length - 1];
+          if (/^\d{4}-\d{2}-\d{2}$/.test(dp) && /^\d{2}h\d{2}m\d{2}s$/.test(tp)) {
+            saveTimestamp = dp + '_' + tp;
+          }
+        }
+
         var newOrder = {
-          id:          S.nextOid(),
-          filename:    file.name,
-          fileHandle:  null,    // imported from outside the working folder — no handle
-          doNumber:    g.doNumber   || '',
-          partNumber:  g.partNumber || '',
-          partName:    g.partName   || '',
-          customer:    g.customer   || '',
-          status:      g.status     || 'draft',
-          dateCreated: g.dateCreated|| '',
-          version:     p._version   || '1.0',
-          loaded:      true,
-          general:     g,
-          nodes:       p.nodes       || [],
-          connections: p.connections || [],
-          nid:         p._nid || 0,
-          cid:         p._cid || 0,
-          isDirty:     false,
+          id:             S.nextOid(),
+          did1:           did1,
+          did2:           did2,
+          filename:       file.name,
+          fileHandle:     null,         // no handle — came from outside the working folder
+          saveTimestamp:  saveTimestamp,
+          doNumber:       g.doNumber       || '',
+          partNumber:     g.partNumber     || '',
+          partName:       g.partName       || '',
+          customer:       g.customer       || '',
+          status:         g.status         || 'draft',
+          dateCreated:    g.dateCreated    || '',
+          version:        p._version       || '1.0',
+          isParent:       !!g.isParent,
+          isChild:        !!g.isChild,
+          parentDoNumber: g.parentDoNumber || null,
+          childCount:     g.childCount     || 0,
+          isExpanded:     false,
+          loaded:         true,
+          general:        g,
+          nodes:          p.nodes          || [],
+          connections:    p.connections    || [],
+          nid:            p._nid           || 0,
+          cid:            p._cid           || 0,
+          isDirty:        false,
         };
+
         S.pushOrder(newOrder);
         S.setSelectedOrderId(newOrder.id);
-        S.setActiveOrderId(newOrder.id);   // set before apply so guards unlock correctly
+        S.setActiveOrderId(newOrder.id);  // set before apply so guards unlock correctly
 
         applyPayloadToState(p);
         S.setIsDirty(false);
