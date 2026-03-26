@@ -85,10 +85,10 @@ export function buildLeftPanel() {
 
   var tabs = document.createElement('div');
   Object.assign(tabs.style, { display: 'flex', borderBottom: '1px solid rgba(255,255,255,0.20)', flexShrink: '0' });
-  ['Orders', 'General', 'Node', 'Path'].forEach(function(label) {
+  ['Orders', 'General', 'Part', 'Node', 'Path'].forEach(function(label) {
     var key      = label.toLowerCase().replace(' ', '_');
     var modeVal  = key === 'node' ? 'node_detail' : key;
-    var isLocked = modeVal !== 'orders';   // General / Node / Path require an open DO
+    var isLocked = modeVal !== 'orders';   // General / Part / Node / Path require an open DO
     var tab = document.createElement('div');
     tab.id = 'mr-tab-' + key;
     Object.assign(tab.style, {
@@ -157,6 +157,7 @@ export function refreshLeftPanel() {
 
   var oTab = document.getElementById('mr-tab-orders');
   var gTab = document.getElementById('mr-tab-general');
+  var ptTab = document.getElementById('mr-tab-part');
   var nTab = document.getElementById('mr-tab-node');
   var pTab = document.getElementById('mr-tab-path');
 
@@ -169,11 +170,12 @@ export function refreshLeftPanel() {
     oTab.style.opacity      = '1';
   }
 
-  // General / Node / Path — locked until a DO is open
+  // General / Part / Node / Path — locked until a DO is open
   [
-    { el: gTab, mode: 'general'     },
-    { el: nTab, mode: 'node_detail' },
-    { el: pTab, mode: 'path'        },
+    { el: gTab,  mode: 'general'     },
+    { el: ptTab, mode: 'part'        },
+    { el: nTab,  mode: 'node_detail' },
+    { el: pTab,  mode: 'path'        },
   ].forEach(function(t) {
     if (!t.el) return;
     var active = S.getLeftMode() === t.mode;
@@ -207,6 +209,12 @@ export function refreshLeftPanel() {
     } else {
       content.appendChild(buildGeneralInputs());
     }
+  } else if (S.getLeftMode() === 'part') {
+    if (!hasOrder) {
+      content.appendChild(buildLockedPlaceholder('Open a delivery order\nto view its part spec.'));
+    } else {
+      content.appendChild(buildPartInputs());
+    }
   } else if (S.getLeftMode() === 'node_detail') {
     var node = S.getNodes().find(function(n) { return n.id === S.getSelectedId(); });
     if (node) {
@@ -224,7 +232,334 @@ export function refreshLeftPanel() {
   }
 }
 
-// Shared placeholder for locked or empty tab states
+// ---------------------------------------------------------------------------
+// Part Tab — full implementation
+// ---------------------------------------------------------------------------
+
+// Helper called by every Part field that affects 3D geometry or material —
+// marks the order dirty and refreshes the visualizer immediately.
+function partDirty() {
+  S.setIsDirty(true);
+  _refreshRightPanel();
+}
+
+function buildPartInputs() {
+  var wrap = document.createElement('div');
+  Object.assign(wrap.style, { display: 'flex', flexDirection: 'column', gap: '18px' });
+  var pt = S.getPart();
+
+  // ── Part Identity ─────────────────────────────────────────────────────────
+  wrap.appendChild(buildCollapsibleSection('Part Identity', [
+    buildTextInput('Part Number',   'mr-pt-pn',  pt.partNumber,   function(v) { S.getPart().partNumber   = v; S.setIsDirty(true); }),
+    buildTextInput('Part Name',     'mr-pt-pname',pt.partName,    function(v) { S.getPart().partName     = v; S.setIsDirty(true); }),
+    buildTextInput('Part Revision', 'mr-pt-prev', pt.partRevision,function(v) { S.getPart().partRevision = v; S.setIsDirty(true); }),
+  ]));
+
+  // ── Geometry ──────────────────────────────────────────────────────────────
+  var geomFields = [];
+
+  // Product type selector — changing it re-renders the tab
+  var productTypeWrap = fWrap();
+  productTypeWrap.appendChild(fLabel('Product Type', 'mr-pt-prodtype'));
+  var productTypeSel = document.createElement('select');
+  productTypeSel.id = 'mr-pt-prodtype';
+  sInput(productTypeSel);
+  productTypeSel.style.cursor = 'pointer';
+  ['bar', 'disc', 'ring', 'mushroom'].forEach(function(opt) {
+    var o = document.createElement('option');
+    o.value = opt;
+    o.textContent = opt.charAt(0).toUpperCase() + opt.slice(1);
+    if (opt === pt.productType) o.selected = true;
+    productTypeSel.appendChild(o);
+  });
+  productTypeSel.addEventListener('change', function() {
+    S.getPart().productType = productTypeSel.value;
+    partDirty();
+    refreshLeftPanel();
+  });
+  productTypeWrap.appendChild(productTypeSel);
+  geomFields.push(productTypeWrap);
+
+  // ── Bar fields ───────────────────────────────────────────────────────────
+  if (pt.productType === 'bar') {
+    var barShapeWrap = fWrap();
+    barShapeWrap.appendChild(fLabel('Bar Shape', 'mr-pt-barshape'));
+    var barShapeSel = document.createElement('select');
+    barShapeSel.id = 'mr-pt-barshape';
+    sInput(barShapeSel);
+    barShapeSel.style.cursor = 'pointer';
+    [['round','Round'],['rectangular','Rectangular'],['hexagonal','Hexagonal']].forEach(function(opt) {
+      var o = document.createElement('option');
+      o.value = opt[0]; o.textContent = opt[1];
+      if (opt[0] === pt.barShape) o.selected = true;
+      barShapeSel.appendChild(o);
+    });
+    barShapeSel.addEventListener('change', function() {
+      S.getPart().barShape = barShapeSel.value;
+      partDirty();
+      refreshLeftPanel();
+    });
+    barShapeWrap.appendChild(barShapeSel);
+    geomFields.push(barShapeWrap);
+
+    var steppedWrap = fWrap();
+    steppedWrap.appendChild(fLabel('Stepped Bar', 'mr-pt-stepped'));
+    var steppedSel = document.createElement('select');
+    steppedSel.id = 'mr-pt-stepped';
+    sInput(steppedSel);
+    steppedSel.style.cursor = 'pointer';
+    [['no','No'],['yes','Yes']].forEach(function(opt) {
+      var o = document.createElement('option');
+      o.value = opt[0]; o.textContent = opt[1];
+      if (opt[0] === pt.isStepped) o.selected = true;
+      steppedSel.appendChild(o);
+    });
+    steppedSel.addEventListener('change', function() {
+      S.getPart().isStepped = steppedSel.value;
+      partDirty();
+      refreshLeftPanel();
+    });
+    steppedWrap.appendChild(steppedSel);
+    geomFields.push(steppedWrap);
+
+    if (pt.isStepped === 'yes') {
+      geomFields.push(buildNumberInputEl('Number of Steps', 'mr-pt-numsteps',
+        pt.numSteps, 2, 12, 1,
+        function(v) { S.getPart().numSteps = v; partDirty(); }
+      ));
+    }
+
+    if (pt.barShape === 'round') {
+      geomFields.push(buildNumberInputEl('Diameter' + unitSuffix('length'), 'mr-pt-bardiam',
+        toDisplay(pt.barDiameter, 'length'), 1, 5000, 1,
+        function(v) { S.getPart().barDiameter = fromDisplay(v, 'length'); partDirty(); }
+      ));
+    } else if (pt.barShape === 'hexagonal') {
+      geomFields.push(buildNumberInputEl('Across Flats' + unitSuffix('length'), 'mr-pt-baraf',
+        toDisplay(pt.barAcrossFlats, 'length'), 1, 5000, 1,
+        function(v) { S.getPart().barAcrossFlats = fromDisplay(v, 'length'); partDirty(); }
+      ));
+    } else if (pt.barShape === 'rectangular') {
+      geomFields.push(buildNumberInputEl('Width' + unitSuffix('length'), 'mr-pt-barw',
+        toDisplay(pt.barWidth, 'length'), 1, 5000, 1,
+        function(v) { S.getPart().barWidth = fromDisplay(v, 'length'); partDirty(); }
+      ));
+      geomFields.push(buildNumberInputEl('Thickness' + unitSuffix('length'), 'mr-pt-bart',
+        toDisplay(pt.barThickness, 'length'), 1, 5000, 1,
+        function(v) { S.getPart().barThickness = fromDisplay(v, 'length'); partDirty(); }
+      ));
+    }
+    geomFields.push(buildNumberInputEl('Length' + unitSuffix('length'), 'mr-pt-barl',
+      toDisplay(pt.barLength, 'length'), 1, 20000, 1,
+      function(v) { S.getPart().barLength = fromDisplay(v, 'length'); partDirty(); }
+    ));
+  }
+
+  // ── Disc fields ──────────────────────────────────────────────────────────
+  if (pt.productType === 'disc') {
+    geomFields.push(buildNumberInputEl('OD' + unitSuffix('length'), 'mr-pt-disod',
+      toDisplay(pt.discOD, 'length'), 1, 10000, 1,
+      function(v) { S.getPart().discOD = fromDisplay(v, 'length'); partDirty(); }
+    ));
+    geomFields.push(buildNumberInputEl('Thickness' + unitSuffix('length'), 'mr-pt-dist',
+      toDisplay(pt.discThickness, 'length'), 1, 5000, 1,
+      function(v) { S.getPart().discThickness = fromDisplay(v, 'length'); partDirty(); }
+    ));
+  }
+
+  // ── Ring fields ──────────────────────────────────────────────────────────
+  if (pt.productType === 'ring') {
+    geomFields.push(buildNumberInputEl('OD' + unitSuffix('length'), 'mr-pt-ringod',
+      toDisplay(pt.ringOD, 'length'), 1, 10000, 1,
+      function(v) { S.getPart().ringOD = fromDisplay(v, 'length'); partDirty(); }
+    ));
+    geomFields.push(buildNumberInputEl('ID' + unitSuffix('length'), 'mr-pt-ringid',
+      toDisplay(pt.ringID, 'length'), 1, 9000, 1,
+      function(v) { S.getPart().ringID = fromDisplay(v, 'length'); partDirty(); }
+    ));
+    geomFields.push(buildNumberInputEl('Height' + unitSuffix('length'), 'mr-pt-ringh',
+      toDisplay(pt.ringHeight, 'length'), 1, 5000, 1,
+      function(v) { S.getPart().ringHeight = fromDisplay(v, 'length'); partDirty(); }
+    ));
+
+    var odcWrap = fWrap();
+    odcWrap.appendChild(fLabel('OD Contour', 'mr-pt-odcontour'));
+    var odcSel = document.createElement('select');
+    odcSel.id = 'mr-pt-odcontour'; sInput(odcSel); odcSel.style.cursor = 'pointer';
+    [['none','None'],['forged','Forged'],['machined','Machined']].forEach(function(opt) {
+      var o = document.createElement('option');
+      o.value = opt[0]; o.textContent = opt[1];
+      if (opt[0] === pt.odContour) o.selected = true;
+      odcSel.appendChild(o);
+    });
+    odcSel.addEventListener('change', function() { S.getPart().odContour = odcSel.value; partDirty(); });
+    odcWrap.appendChild(odcSel);
+    geomFields.push(odcWrap);
+
+    var idcWrap = fWrap();
+    idcWrap.appendChild(fLabel('ID Contour', 'mr-pt-idcontour'));
+    var idcSel = document.createElement('select');
+    idcSel.id = 'mr-pt-idcontour'; sInput(idcSel); idcSel.style.cursor = 'pointer';
+    [['none','None'],['forged','Forged'],['machined','Machined']].forEach(function(opt) {
+      var o = document.createElement('option');
+      o.value = opt[0]; o.textContent = opt[1];
+      if (opt[0] === pt.idContour) o.selected = true;
+      idcSel.appendChild(o);
+    });
+    idcSel.addEventListener('change', function() { S.getPart().idContour = idcSel.value; partDirty(); });
+    idcWrap.appendChild(idcSel);
+    geomFields.push(idcWrap);
+  }
+
+  // ── Mushroom fields ───────────────────────────────────────────────────────
+  if (pt.productType === 'mushroom') {
+    geomFields.push(buildNumberInputEl('Flange Diameter' + unitSuffix('length'), 'mr-pt-flange',
+      toDisplay(pt.flangeDiam, 'length'), 1, 10000, 1,
+      function(v) { S.getPart().flangeDiam = fromDisplay(v, 'length'); partDirty(); }
+    ));
+    geomFields.push(buildNumberInputEl('Stem Diameter' + unitSuffix('length'), 'mr-pt-stem',
+      toDisplay(pt.stemDiam, 'length'), 1, 5000, 1,
+      function(v) { S.getPart().stemDiam = fromDisplay(v, 'length'); partDirty(); }
+    ));
+    geomFields.push(buildNumberInputEl('Total Height' + unitSuffix('length'), 'mr-pt-mush-h',
+      toDisplay(pt.totalHeight, 'length'), 1, 5000, 1,
+      function(v) { S.getPart().totalHeight = fromDisplay(v, 'length'); partDirty(); }
+    ));
+  }
+
+  wrap.appendChild(buildCollapsibleSection('Geometry', geomFields));
+
+  // ── Material ──────────────────────────────────────────────────────────────
+  var familyOptions = Object.keys(MATERIAL_CATALOG).map(function(k) {
+    return { value: k, label: MATERIAL_CATALOG[k].label };
+  });
+  var familyWrap = fWrap();
+  familyWrap.appendChild(fLabel('Material Family', 'mr-pt-matfam'));
+  var famSel = document.createElement('select');
+  famSel.id = 'mr-pt-matfam'; sInput(famSel); famSel.style.cursor = 'pointer';
+  familyOptions.forEach(function(opt) {
+    var o = document.createElement('option');
+    o.value = opt.value; o.textContent = opt.label;
+    if (opt.value === pt.materialFamily) o.selected = true;
+    famSel.appendChild(o);
+  });
+  famSel.addEventListener('change', function() {
+    var v = famSel.value;
+    S.getPart().materialFamily = v;
+    var cat = MATERIAL_CATALOG[v];
+    if (cat) {
+      S.getPart().grade   = cat.grades[0];
+      S.getPart().density = cat.densityDefault;
+    }
+    partDirty();
+    refreshLeftPanel();
+  });
+  familyWrap.appendChild(famSel);
+
+  var cat = MATERIAL_CATALOG[pt.materialFamily] || { grades: [] };
+  var gradeWrap = fWrap();
+  gradeWrap.appendChild(fLabel('Grade', 'mr-pt-grade'));
+  var gradeSel = document.createElement('select');
+  gradeSel.id = 'mr-pt-grade'; sInput(gradeSel); gradeSel.style.cursor = 'pointer';
+  cat.grades.forEach(function(g) {
+    var o = document.createElement('option');
+    o.value = g; o.textContent = g;
+    if (g === pt.grade) o.selected = true;
+    gradeSel.appendChild(o);
+  });
+  gradeSel.addEventListener('change', function() {
+    S.getPart().grade = gradeSel.value;
+    partDirty();
+  });
+  gradeWrap.appendChild(gradeSel);
+
+  wrap.appendChild(buildCollapsibleSection('Material', [
+    familyWrap,
+    gradeWrap,
+    buildSelectEl('Target Condition', 'mr-pt-cond',
+      [
+        { value: 'annealed',        label: 'Annealed'         },
+        { value: 'normalized',      label: 'Normalized'       },
+        { value: 'stress_relieved', label: 'Stress Relieved'  },
+        { value: 'quench_tempered', label: 'Quench & Tempered'},
+      ],
+      pt.condition,
+      function(v) { S.getPart().condition = v; partDirty(); }
+    ),
+    buildNumberInputEl('Density' + unitSuffix('density'), 'mr-pt-dens',
+      toDisplay(pt.density, 'density'), 0.1, 25, 0.01,
+      function(v) { S.getPart().density = fromDisplay(v, 'density'); partDirty(); }
+    ),
+    buildNumberInputEl('Hardness Min (HB)', 'mr-pt-hbmin',
+      pt.hardnessMin, 0, 700, 1,
+      function(v) { S.getPart().hardnessMin = v; S.setIsDirty(true); }
+    ),
+    buildNumberInputEl('Hardness Max (HB)', 'mr-pt-hbmax',
+      pt.hardnessMax, 0, 700, 1,
+      function(v) { S.getPart().hardnessMax = v; S.setIsDirty(true); }
+    ),
+  ]));
+
+  // ── Quantity ──────────────────────────────────────────────────────────────
+  wrap.appendChild(buildCollapsibleSection('Quantity', [
+    buildNumberInputEl('Quantity', 'mr-pt-qty',
+      pt.quantity, 1, 999999, 1,
+      function(v) { S.getPart().quantity = v; S.setIsDirty(true); }
+    ),
+  ]));
+
+  // ── Finish Requirements ───────────────────────────────────────────────────
+  var finishFields = [];
+
+  finishFields.push(buildSelectEl('Heat Treat Required', 'mr-pt-htreq',
+    [
+      { value: 'no',             label: 'No'               },
+      { value: 'normalize',      label: 'Normalize'        },
+      { value: 'anneal',         label: 'Anneal'           },
+      { value: 'stress_relief',  label: 'Stress Relief'    },
+      { value: 'quench_temper',  label: 'Quench & Temper'  },
+    ],
+    pt.heatTreatReq,
+    function(v) { S.getPart().heatTreatReq = v; S.setIsDirty(true); }
+  ));
+
+  finishFields.push(buildSelectEl('Machining Required', 'mr-pt-machreq',
+    [
+      { value: 'no',  label: 'No'  },
+      { value: 'yes', label: 'Yes' },
+    ],
+    pt.machiningReq,
+    function(v) { S.getPart().machiningReq = v; S.setIsDirty(true); }
+  ));
+
+  finishFields.push(buildSelectEl('Certification Required', 'mr-pt-certreq',
+    [
+      { value: 'no',  label: 'No'  },
+      { value: 'yes', label: 'Yes' },
+    ],
+    pt.certRequired,
+    function(v) { S.getPart().certRequired = v; S.setIsDirty(true); refreshLeftPanel(); }
+  ));
+
+  if (pt.certRequired === 'yes') {
+    finishFields.push(buildSelectEl('Cert Type', 'mr-pt-certtype',
+      [
+        { value: 'C_of_C',               label: 'Certificate of Conformance' },
+        { value: 'material_test_report', label: 'Material Test Report'       },
+        { value: 'first_article',        label: 'First Article'              },
+        { value: 'PPAP',                 label: 'PPAP'                       },
+        { value: 'FAIR',                 label: 'FAIR'                       },
+      ],
+      pt.certType,
+      function(v) { S.getPart().certType = v; S.setIsDirty(true); }
+    ));
+  }
+
+  wrap.appendChild(buildCollapsibleSection('Finish Requirements', finishFields));
+
+  return wrap;
+}
+
 function buildLockedPlaceholder(msg) {
   var ph = document.createElement('div');
   Object.assign(ph.style, {
@@ -345,7 +680,7 @@ function buildGeneralInputs() {
     buildDoNumberInput(),
     buildTextInput('Author',    'mr-g-author',    gen.author,    function(v) { S.getGeneral().author    = v; S.setIsDirty(true); }),
     buildTextInput('Estimator', 'mr-g-estimator', gen.estimator, function(v) { S.getGeneral().estimator = v; S.setIsDirty(true); }),
-    buildTextInput('Revision',  'mr-g-rev',       gen.revision,  function(v) { S.getGeneral().revision  = v; S.setIsDirty(true); }),
+    buildTextInput('Plan Revision', 'mr-g-rev',       gen.revision,  function(v) { S.getGeneral().revision  = v; S.setIsDirty(true); }),
   ]);
   wrap.appendChild(docSection);
 
@@ -1441,6 +1776,7 @@ function buildOrderActionRow() {
     var slot = S.findOrder(function(o) { return o.id === activeId; });
     if (slot) {
       slot.general     = JSON.parse(JSON.stringify(S.getGeneral()));
+      slot.part        = JSON.parse(JSON.stringify(S.getPart()));
       slot.nodes       = JSON.parse(JSON.stringify(S.getNodes()));
       slot.connections = JSON.parse(JSON.stringify(S.getConnections()));
       slot.nid         = S.getNid();
@@ -1453,7 +1789,7 @@ function buildOrderActionRow() {
     S.setConnections([]);
     S.setNid(0);
     S.setCid(0);
-    S.resetGeneral();
+    S.resetGeneral(); S.resetPart();
     S.setActiveOrderId(null);
     S.setIsDirty(false);
     refreshConnections();
@@ -1499,7 +1835,7 @@ function buildOrderActionRow() {
       S.setConnections([]);
       S.setNid(0);
       S.setCid(0);
-      S.resetGeneral();
+      S.resetGeneral(); S.resetPart();
       S.setActiveOrderId(null);
       S.setIsDirty(false);
       refreshConnections();

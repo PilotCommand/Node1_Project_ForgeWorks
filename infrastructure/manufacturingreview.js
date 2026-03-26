@@ -721,7 +721,7 @@ function styleBarBtn(btn) {
 }
 
 
-export var SAVE_VERSION = '5.0';
+export var SAVE_VERSION = '6.0';
 
 // ---------------------------------------------------------------------------
 // Build the canonical save payload from current state
@@ -747,6 +747,7 @@ function buildSavePayload() {
     _did1:       order ? (order.did1 || '') : '',
     _did2:       order ? (order.did2 || '') : '',
     general:     JSON.parse(JSON.stringify(S.getGeneral())),
+    part:        JSON.parse(JSON.stringify(S.getPart())),
     nodes:       nodeSnapshot,
     connections: JSON.parse(JSON.stringify(S.getConnections())),
   };
@@ -851,6 +852,7 @@ function openOrder(orderId) {
     var currentSlot = S.findOrder(function(o) { return o.id === currentId; });
     if (currentSlot) {
       currentSlot.general     = JSON.parse(JSON.stringify(S.getGeneral()));
+      currentSlot.part        = JSON.parse(JSON.stringify(S.getPart()));
       currentSlot.nodes       = JSON.parse(JSON.stringify(S.getNodes()));
       currentSlot.connections = JSON.parse(JSON.stringify(S.getConnections()));
       currentSlot.nid         = S.getNid();
@@ -897,6 +899,10 @@ function applyOrderToState(order) {
   // Reset general to blank defaults first, then overlay saved fields if they exist
   S.resetGeneral();
   if (order.general) S.patchGeneral(order.general);
+
+  // Same for part data
+  S.resetPart();
+  if (order.part) S.patchPart(order.part);
   S.setNid(order.nid || 0);
   S.setCid(order.cid || 0);
 
@@ -995,6 +1001,20 @@ function applyPayloadToState(payload) {
 
   S.resetGeneral();
   if (payload.general) S.patchGeneral(payload.general);
+
+  // v5.0 → v6.0: restore _part from payload, or migrate from Stock Out node
+  // params for old files that predate the Part tab.
+  S.resetPart();
+  if (payload.part) {
+    S.patchPart(payload.part);
+  } else {
+    // Best-effort migration: pull part identity from general if present
+    if (payload.general) {
+      if (payload.general.partNumber) S.getPart().partNumber = payload.general.partNumber;
+      if (payload.general.partName)   S.getPart().partName   = payload.general.partName;
+    }
+    // Geometry/material fields are left at defaults — user fills in Part tab manually
+  }
 
   if (payload._unitSystem === 'si' || payload._unitSystem === 'imperial') {
     S.setUnitSystem(payload._unitSystem);
@@ -1754,7 +1774,9 @@ function injectStyles() {
     '#forgeworks-mfg-review ::-webkit-scrollbar-track{background:rgba(0,0,0,0.2)}' +
     '#forgeworks-mfg-review ::-webkit-scrollbar-thumb{background:' + ACCENT_DIM + '0.2);border-radius:3px}' +
     '#forgeworks-mfg-review ::-webkit-scrollbar-thumb:hover{background:' + ACCENT_DIM + '0.4)}' +
-    '#forgeworks-mfg-review input[type=number]::-webkit-inner-spin-button{opacity:0.3}' +
+    '#forgeworks-mfg-review input[type=number]::-webkit-inner-spin-button{display:none}' +
+    '#forgeworks-mfg-review input[type=number]::-webkit-outer-spin-button{display:none}' +
+    '#forgeworks-mfg-review input[type=number]{-moz-appearance:textfield}' +
     '#forgeworks-mfg-review select option{background:#0d1520;color:#aabbcc}' +
     '.mr-node:active{cursor:grabbing!important}' +
     '#mr-ctx-menu{user-select:none}';
@@ -1867,6 +1889,41 @@ function buildExampleOrder() {
     connections: connections,
     nid:         nid,
     cid:         cid,
+    part: {
+      partNumber:     'EX-001',
+      partName:       'Example Forge Part',
+      partRevision:   'A',
+      productType:    'bar',
+      barShape:       'round',
+      isStepped:      'no',
+      numSteps:       1,
+      barDiameter:    100,
+      barAcrossFlats: 100,
+      barWidth:       100,
+      barThickness:   50,
+      barLength:      500,
+      discOD:         300,
+      discThickness:  80,
+      ringOD:         400,
+      ringID:         200,
+      ringHeight:     100,
+      odContour:      'none',
+      idContour:      'none',
+      flangeDiam:     300,
+      stemDiam:       100,
+      totalHeight:    200,
+      materialFamily: 'carbon_steel',
+      grade:          '4140',
+      condition:      'annealed',
+      density:        7.85,
+      hardnessMin:    0,
+      hardnessMax:    0,
+      quantity:       1,
+      heatTreatReq:   'no',
+      machiningReq:   'no',
+      certRequired:   'no',
+      certType:       'C_of_C',
+    },
   };
 }
 

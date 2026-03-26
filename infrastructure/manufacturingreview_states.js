@@ -324,6 +324,108 @@ export function resetGeneral() {
 }
 
 // ============================================================================
+// PART SPECIFICATION
+// _part — the intended product definition for this delivery order.
+// Separate from _general (logistics) — this is the engineering intent.
+// Shape/material fields mirror the Stock Out / Stock In node param systems
+// so the Part tab and nodes share the same vocabulary.
+// ============================================================================
+
+var _part = {
+  // ── Part Identity ─────────────────────────────────────────────────────────
+  partNumber:     '',
+  partName:       '',
+  partRevision:   '',       // revision of the part design (≠ Plan Revision in _general)
+
+  // ── Target Geometry ───────────────────────────────────────────────────────
+  // Mirrors the Stock Out node productType / shape system exactly.
+  productType:    'bar',    // bar | disc | ring | mushroom
+  // Bar
+  barShape:       'round',  // round | rectangular | hexagonal
+  isStepped:      'no',
+  numSteps:       1,
+  barDiameter:    100,
+  barAcrossFlats: 100,
+  barWidth:       100,
+  barThickness:   50,
+  barLength:      500,
+  // Disc
+  discOD:         300,
+  discThickness:  80,
+  // Ring
+  ringOD:         400,
+  ringID:         200,
+  ringHeight:     100,
+  odContour:      'none',   // none | forged | machined
+  idContour:      'none',
+  // Mushroom
+  flangeDiam:     300,
+  stemDiam:       100,
+  totalHeight:    200,
+
+  // ── Material Specification ────────────────────────────────────────────────
+  materialFamily: 'carbon_steel',
+  grade:          '4140',
+  condition:      'annealed',   // target condition after all processing
+  density:        7.85,         // g/cm³ — auto-filled from family, editable
+  hardnessMin:    0,            // HB — 0 means no requirement
+  hardnessMax:    0,
+
+  // ── Quantity ──────────────────────────────────────────────────────────────
+  quantity:       1,
+
+  // ── Finish Requirements ───────────────────────────────────────────────────
+  heatTreatReq:   'no',         // no | normalize | anneal | stress_relief | quench_temper
+  machiningReq:   'no',         // no | yes
+  certRequired:   'no',         // no | yes
+  certType:       'C_of_C',     // C_of_C | material_test_report | first_article | PPAP | FAIR
+};
+
+export function getPart()        { return _part; }
+
+// Merge a partial or full object into _part — used when loading a saved payload.
+export function patchPart(obj) {
+  Object.assign(_part, obj);
+}
+
+// Full reset back to defaults — called when clearing the session or opening a new order.
+export function resetPart() {
+  _part.partNumber     = '';
+  _part.partName       = '';
+  _part.partRevision   = '';
+  _part.productType    = 'bar';
+  _part.barShape       = 'round';
+  _part.isStepped      = 'no';
+  _part.numSteps       = 1;
+  _part.barDiameter    = 100;
+  _part.barAcrossFlats = 100;
+  _part.barWidth       = 100;
+  _part.barThickness   = 50;
+  _part.barLength      = 500;
+  _part.discOD         = 300;
+  _part.discThickness  = 80;
+  _part.ringOD         = 400;
+  _part.ringID         = 200;
+  _part.ringHeight     = 100;
+  _part.odContour      = 'none';
+  _part.idContour      = 'none';
+  _part.flangeDiam     = 300;
+  _part.stemDiam       = 100;
+  _part.totalHeight    = 200;
+  _part.materialFamily = 'carbon_steel';
+  _part.grade          = '4140';
+  _part.condition      = 'annealed';
+  _part.density        = 7.85;
+  _part.hardnessMin    = 0;
+  _part.hardnessMax    = 0;
+  _part.quantity       = 1;
+  _part.heatTreatReq   = 'no';
+  _part.machiningReq   = 'no';
+  _part.certRequired   = 'no';
+  _part.certType       = 'C_of_C';
+}
+
+// ============================================================================
 // UI PREFERENCES — DESCRIPTIONS TOGGLE
 // Controls whether description text is shown in each Summary working cell.
 // Default true (on) — useful for new users; power users can turn it off.

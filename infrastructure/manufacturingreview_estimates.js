@@ -25,6 +25,13 @@ import {
   ACCENT, ACCENT_DIM,
 } from './manufacturingreview_defs.js';
 import { selectNode } from './manufacturingreview_process.js';
+import {
+  buildVisualizerPanel,
+  refreshVisualizer,
+} from './manufacturingreview_visualizer.js';
+
+// Panel view mode: 'estimates' | '3d'
+var _rightMode = 'estimates';
 
 // ---------------------------------------------------------------------------
 // Right Panel
@@ -40,21 +47,75 @@ export function buildRightPanel() {
     background: 'rgba(4,8,14,0.5)',
   });
 
+  // ── Header with tab toggle ─────────────────────────────────────────────
   var hdr = document.createElement('div');
   Object.assign(hdr.style, {
-    padding: '12px 16px', borderBottom: '1px solid rgba(255,255,255,0.20)',
-    fontSize: '9px', letterSpacing: '2.5px', textTransform: 'uppercase', color: ACCENT, flexShrink: '0',
+    display: 'flex', alignItems: 'center',
+    padding: '0 12px',
+    borderBottom: '1px solid rgba(255,255,255,0.20)',
+    flexShrink: '0',
   });
-  hdr.textContent = 'Estimates';
+
+  ['Estimates', 'Visualizer'].forEach(function(label) {
+    var mode = label === 'Estimates' ? 'estimates' : '3d';
+    var tab = document.createElement('div');
+    Object.assign(tab.style, {
+      padding: '12px 8px', fontSize: '9px', letterSpacing: '2px',
+      textTransform: 'uppercase', cursor: 'pointer',
+      transition: 'all 0.2s ease',
+      color: _rightMode === mode ? ACCENT : '#7a9aaa',
+      borderBottom: _rightMode === mode ? '2px solid ' + ACCENT : '2px solid transparent',
+      marginBottom: '-1px',
+    });
+    tab.id = 'mr-right-tab-' + mode;
+    tab.textContent = label;
+    tab.addEventListener('click', function() {
+      _rightMode = mode;
+      _updateRightTabs();
+      refreshRightPanel();
+    });
+    hdr.appendChild(tab);
+  });
   panel.appendChild(hdr);
 
-  var content = document.createElement('div');
-  content.id = 'mr-right-content';
-  Object.assign(content.style, { flex: '1', overflowY: 'auto', padding: '14px' });
-  panel.appendChild(content);
+  // ── Estimates content area ─────────────────────────────────────────────
+  var estContent = document.createElement('div');
+  estContent.id = 'mr-right-content';
+  Object.assign(estContent.style, {
+    flex: '1', overflowY: 'auto', padding: '14px',
+    display: _rightMode === 'estimates' ? 'block' : 'none',
+  });
+  panel.appendChild(estContent);
+
+  // ── 3D view area ───────────────────────────────────────────────────────
+  var vizContent = document.createElement('div');
+  vizContent.id = 'mr-right-viz';
+  Object.assign(vizContent.style, {
+    flex: '1', overflow: 'hidden',
+    display: _rightMode === '3d' ? 'flex' : 'none',
+  });
+  vizContent.appendChild(buildVisualizerPanel());
+  panel.appendChild(vizContent);
 
   showRightPlaceholder();
   return panel;
+}
+
+function _updateRightTabs() {
+  var estTab = document.getElementById('mr-right-tab-estimates');
+  var vizTab = document.getElementById('mr-right-tab-3d');
+  if (estTab) {
+    estTab.style.color        = _rightMode === 'estimates' ? ACCENT : '#7a9aaa';
+    estTab.style.borderBottom = _rightMode === 'estimates' ? '2px solid ' + ACCENT : '2px solid transparent';
+  }
+  if (vizTab) {
+    vizTab.style.color        = _rightMode === '3d' ? ACCENT : '#7a9aaa';
+    vizTab.style.borderBottom = _rightMode === '3d' ? '2px solid ' + ACCENT : '2px solid transparent';
+  }
+  var estContent = document.getElementById('mr-right-content');
+  var vizContent = document.getElementById('mr-right-viz');
+  if (estContent) estContent.style.display = _rightMode === 'estimates' ? 'block' : 'none';
+  if (vizContent) vizContent.style.display = _rightMode === '3d' ? 'flex' : 'none';
 }
 
 export function showRightPlaceholder() {
@@ -692,6 +753,20 @@ export function buildStepWorkings(step) {
 }
 
 export function refreshRightPanel() {
+  // Sync the visualizer — node-specific step if a node is selected, otherwise part view
+  if (!S.getActiveOrderId()) {
+    refreshVisualizer(null);
+  } else {
+    var selId = S.getSelectedId();
+    if (selId) {
+      var chain = computeChain();
+      var step  = chain.find(function(s) { return s.nodeId === selId; });
+      refreshVisualizer(step ? { type: 'node', step: step } : { type: 'part' });
+    } else {
+      refreshVisualizer({ type: 'part' });
+    }
+  }
+
   var content = document.getElementById('mr-right-content');
   if (!content) return;
   content.innerHTML = '';
