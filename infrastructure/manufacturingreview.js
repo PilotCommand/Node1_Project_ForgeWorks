@@ -937,6 +937,29 @@ function applyPayloadToState(payload) {
     if (payload.general.totalQuantity  === undefined) payload.general.totalQuantity  = 0;
     if (payload.general.batchQuantity  === undefined) payload.general.batchQuantity  = 0;
     if (payload.general.batchNotes     === undefined) payload.general.batchNotes     = '';
+    if (payload.general.dateWritten    === undefined) payload.general.dateWritten    = payload.general.dateCreated || '';
+    if (payload.general.datePromise    === undefined) payload.general.datePromise    = '';
+    if (payload.general.dateShip       === undefined) payload.general.dateShip       = '';
+    if (payload.general.dateArrival    === undefined) payload.general.dateArrival    = '';
+    if (payload.general.author         === undefined) payload.general.author         = '';
+    if (payload.general.estimator      === undefined) payload.general.estimator      = '';
+    // Migrate old customer/engineer fields to new structure
+    if (payload.general.company        === undefined) payload.general.company        = payload.general.customer  || '';
+    if (payload.general.customerNum    === undefined) payload.general.customerNum    = '';
+    if (payload.general.poNumber       === undefined) payload.general.poNumber       = '';
+    if (payload.general.companyPhone   === undefined) payload.general.companyPhone   = '';
+    if (payload.general.companyFax     === undefined) payload.general.companyFax     = '';
+    if (payload.general.companyEmail   === undefined) payload.general.companyEmail   = '';
+    if (payload.general.addrLine1      === undefined) payload.general.addrLine1      = '';
+    if (payload.general.addrLine2      === undefined) payload.general.addrLine2      = '';
+    if (payload.general.addrCity       === undefined) payload.general.addrCity       = '';
+    if (payload.general.addrState      === undefined) payload.general.addrState      = '';
+    if (payload.general.addrZip        === undefined) payload.general.addrZip        = '';
+    if (payload.general.addrCountry    === undefined) payload.general.addrCountry    = '';
+    if (payload.general.buyerName      === undefined) payload.general.buyerName      = '';
+    if (payload.general.buyerPhone     === undefined) payload.general.buyerPhone     = '';
+    if (payload.general.buyerEmail     === undefined) payload.general.buyerEmail     = '';
+    if (payload.general.buyerFax       === undefined) payload.general.buyerFax       = '';
   }
 
   // DID migration: old files without DIDs get them generated now and saved on
@@ -1791,8 +1814,8 @@ function buildExampleOrder() {
     filename:       null,
     fileHandle:     null,
     doNumber:       'EXAMPLE',
-    partNumber:     'EX-001',
-    partName:       'Example Forge Part',
+    partNumber:     '',
+    partName:       '',
     customer:       'Forgeworks',
     status:         'draft',
     dateCreated:    '',
@@ -1806,12 +1829,27 @@ function buildExampleOrder() {
     isExpanded:     false,
     general: {
       doNumber:       'EXAMPLE',
-      partNumber:     'EX-001',
-      partName:       'Example Forge Part',
       revision:       'A',
-      customer:       'Forgeworks',
-      engineer:       '',
-      dateCreated:    '',
+      author:         'Forgeworks',
+      estimator:      '',
+      company:        'Forgeworks Demo',
+      customerNum:    '',
+      companyPhone:   '',
+      companyEmail:   '',
+      addrLine1:      '',
+      addrLine2:      '',
+      addrCity:       '',
+      addrState:      '',
+      addrZip:        '',
+      addrCountry:    '',
+      buyerName:      '',
+      buyerPhone:     '',
+      buyerEmail:     '',
+      buyerFax:       '',
+      dateWritten:    '',
+      datePromise:    '',
+      dateShip:       '',
+      dateArrival:    '',
       status:         'draft',
       notes:          'Built-in example delivery order. Shows a complete forge process chain: Stock In → Cut → Heat → Forge → Heat Treat → Inspect → Stock Out.',
       material:       '4140',

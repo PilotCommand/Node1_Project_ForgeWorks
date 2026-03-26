@@ -230,39 +230,159 @@ function buildLockedPlaceholder(msg) {
   return ph;
 }
 
+// ---------------------------------------------------------------------------
+// buildCollapsibleSection — like buildInputSection but with a chevron toggle
+// startOpen defaults to true. State is stored on the returned element.
+// ---------------------------------------------------------------------------
+
+function buildCollapsibleSection(title, fields, startOpen) {
+  var open = startOpen !== false;
+  var section = document.createElement('div');
+  Object.assign(section.style, { display: 'flex', flexDirection: 'column', gap: '8px' });
+
+  // Header row
+  var hdr = document.createElement('div');
+  Object.assign(hdr.style, {
+    display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+    fontSize: '9px', letterSpacing: '2.5px', textTransform: 'uppercase', color: ACCENT,
+    paddingBottom: '6px', borderBottom: '1px solid ' + ACCENT_DIM + '0.25)',
+    cursor: 'pointer', userSelect: 'none',
+  });
+
+  var hdrTitle = document.createElement('span');
+  hdrTitle.textContent = title;
+
+  var chevron = document.createElement('span');
+  Object.assign(chevron.style, {
+    fontSize: '12px', transition: 'transform 0.2s ease', display: 'inline-block',
+    color: ACCENT,
+  });
+  chevron.textContent = '▾';
+
+  hdr.appendChild(hdrTitle);
+  hdr.appendChild(chevron);
+  section.appendChild(hdr);
+
+  // Content wrapper
+  var body = document.createElement('div');
+  Object.assign(body.style, {
+    display:    'flex',
+    flexDirection: 'column',
+    gap:        '8px',
+    overflow:   'hidden',
+    transition: 'max-height 0.28s ease, opacity 0.2s ease',
+    opacity:    '1',
+  });
+  fields.forEach(function(f) { if (f) body.appendChild(f); });
+  section.appendChild(body);
+
+  function applyState(animate) {
+    if (open) {
+      // Expand: set max-height to scrollHeight so it slides open
+      body.style.display  = 'flex';
+      requestAnimationFrame(function() {
+        body.style.maxHeight = body.scrollHeight + 'px';
+        body.style.opacity   = '1';
+        // After the slide-open completes, release the height constraint
+        body.addEventListener('transitionend', function handler(e) {
+          if (e.propertyName === 'max-height' && open) {
+            body.style.maxHeight = 'none';
+          }
+          body.removeEventListener('transitionend', handler);
+        });
+      });
+    } else {
+      // Collapse: lock current height and force reflow so the browser commits
+      // it as the transition start point, then animate to 0
+      body.style.maxHeight = body.scrollHeight + 'px';
+      body.offsetHeight;   // force reflow — without this the first collapse skips the slide
+      requestAnimationFrame(function() {
+        body.style.maxHeight = '0px';
+        body.style.opacity   = '0';
+      });
+      // Hide from layout after transition ends so it doesn't take up space
+      body.addEventListener('transitionend', function handler() {
+        if (!open) body.style.display = 'none';
+        body.removeEventListener('transitionend', handler);
+      });
+    }
+    chevron.style.transform = open ? 'scaleY(1)' : 'scaleY(-1)';
+  }
+
+  // Initial state without animation
+  if (open) {
+    body.style.maxHeight = 'none';   // no numeric ceiling — collapse will measure scrollHeight
+    body.style.opacity   = '1';
+  } else {
+    body.style.maxHeight = '0px';
+    body.style.opacity   = '0';
+    body.style.display   = 'none';
+  }
+  chevron.style.transform = open ? 'scaleY(1)' : 'scaleY(-1)';
+
+  hdr.addEventListener('click', function() {
+    open = !open;
+    applyState(true);
+  });
+
+  return section;
+}
+
 function buildGeneralInputs() {
   var wrap = document.createElement('div');
   Object.assign(wrap.style, { display: 'flex', flexDirection: 'column', gap: '18px' });
+  var gen = S.getGeneral();
 
   // ── Document section ─────────────────────────────────────────────────────
-  var docSection = buildInputSection('Document', [
+  var docSection = buildCollapsibleSection('Document', [
     buildDoNumberInput(),
-    buildTextInput('Part Number', 'mr-g-pn',    S.getGeneral().partNumber, function(v) { S.getGeneral().partNumber = v; S.setIsDirty(true); }),
-    buildTextInput('Part Name',   'mr-g-pname', S.getGeneral().partName,   function(v) { S.getGeneral().partName   = v; S.setIsDirty(true); }),
-    buildTextInput('Revision',    'mr-g-rev',   S.getGeneral().revision,   function(v) { S.getGeneral().revision   = v; S.setIsDirty(true); }),
+    buildTextInput('Author',    'mr-g-author',    gen.author,    function(v) { S.getGeneral().author    = v; S.setIsDirty(true); }),
+    buildTextInput('Estimator', 'mr-g-estimator', gen.estimator, function(v) { S.getGeneral().estimator = v; S.setIsDirty(true); }),
+    buildTextInput('Revision',  'mr-g-rev',       gen.revision,  function(v) { S.getGeneral().revision  = v; S.setIsDirty(true); }),
   ]);
   wrap.appendChild(docSection);
 
-  // ── People section ───────────────────────────────────────────────────────
-  wrap.appendChild(buildInputSection('People', [
-    buildTextInput('Customer', 'mr-g-customer', S.getGeneral().customer, function(v) { S.getGeneral().customer = v; S.setIsDirty(true); }),
-    buildTextInput('Engineer', 'mr-g-engineer', S.getGeneral().engineer, function(v) { S.getGeneral().engineer = v; S.setIsDirty(true); }),
+  // ── Customer section ─────────────────────────────────────────────────────
+  wrap.appendChild(buildCollapsibleSection('Customer', [
+    buildTextInput('Company Name',          'mr-g-company',  gen.company,      function(v) { S.getGeneral().company      = v; S.setIsDirty(true); }),
+    buildTextInput('Customer Number',       'mr-g-custnum',  gen.customerNum,  function(v) { S.getGeneral().customerNum  = v; S.setIsDirty(true); }),
+    buildTextInput('Purchase Order Number', 'mr-g-ponum',    gen.poNumber,     function(v) { S.getGeneral().poNumber     = v; S.setIsDirty(true); }),
+    buildTextInput('Company Phone',         'mr-g-cophone',  gen.companyPhone, function(v) { S.getGeneral().companyPhone = v; S.setIsDirty(true); }),
+    buildTextInput('Company Fax',           'mr-g-cofax',    gen.companyFax,   function(v) { S.getGeneral().companyFax   = v; S.setIsDirty(true); }),
+    buildTextInput('Company Email',         'mr-g-coemail',  gen.companyEmail, function(v) { S.getGeneral().companyEmail = v; S.setIsDirty(true); }),
+    buildTextInput('Address',               'mr-g-addr1',    gen.addrLine1,    function(v) { S.getGeneral().addrLine1    = v; S.setIsDirty(true); }),
+    buildTextInput('Address Line 2',        'mr-g-addr2',    gen.addrLine2,    function(v) { S.getGeneral().addrLine2    = v; S.setIsDirty(true); }),
+    buildTextInput('City',                  'mr-g-city',     gen.addrCity,     function(v) { S.getGeneral().addrCity     = v; S.setIsDirty(true); }),
+    buildTextInput('State / Province',      'mr-g-state',    gen.addrState,    function(v) { S.getGeneral().addrState    = v; S.setIsDirty(true); }),
+    buildTextInput('Postal Code',           'mr-g-zip',      gen.addrZip,      function(v) { S.getGeneral().addrZip      = v; S.setIsDirty(true); }),
+    buildTextInput('Country',               'mr-g-country',  gen.addrCountry,  function(v) { S.getGeneral().addrCountry  = v; S.setIsDirty(true); }),
+  ]));
+
+  // ── Buyer section ─────────────────────────────────────────────────────────
+  wrap.appendChild(buildCollapsibleSection('Buyer', [
+    buildTextInput('Buyer Name',  'mr-g-buyername',  gen.buyerName,  function(v) { S.getGeneral().buyerName  = v; S.setIsDirty(true); }),
+    buildTextInput('Buyer Phone', 'mr-g-buyerphone', gen.buyerPhone, function(v) { S.getGeneral().buyerPhone = v; S.setIsDirty(true); }),
+    buildTextInput('Buyer Email', 'mr-g-buyeremail', gen.buyerEmail, function(v) { S.getGeneral().buyerEmail = v; S.setIsDirty(true); }),
+    buildTextInput('Buyer Fax',   'mr-g-buyerfax',   gen.buyerFax,   function(v) { S.getGeneral().buyerFax   = v; S.setIsDirty(true); }),
   ]));
 
   // ── Status section ───────────────────────────────────────────────────────
-  wrap.appendChild(buildInputSection('Status', [
-    buildTextInput('Date', 'mr-g-date', S.getGeneral().dateCreated, function(v) { S.getGeneral().dateCreated = v; S.setIsDirty(true); }),
+  wrap.appendChild(buildCollapsibleSection('Status', [
+    buildTextInput('Order Written Date', 'mr-g-datewritten', gen.dateWritten, function(v) { S.getGeneral().dateWritten = v; S.setIsDirty(true); }),
+    buildTextInput('Promise Date',       'mr-g-datepromise', gen.datePromise, function(v) { S.getGeneral().datePromise = v; S.setIsDirty(true); }),
+    buildTextInput('Ship Date',          'mr-g-dateship',    gen.dateShip,    function(v) { S.getGeneral().dateShip    = v; S.setIsDirty(true); }),
+    buildTextInput('Arrival Date',       'mr-g-datearrival', gen.dateArrival, function(v) { S.getGeneral().dateArrival = v; S.setIsDirty(true); }),
     buildSelectEl('Status', 'mr-g-status', [
       { value: 'draft',    label: 'Draft'     },
       { value: 'review',   label: 'In Review' },
       { value: 'approved', label: 'Approved'  },
       { value: 'released', label: 'Released'  },
+      { value: 'complete', label: 'Complete'  },
       { value: 'obsolete', label: 'Obsolete'  },
-    ], S.getGeneral().status, function(v) { S.getGeneral().status = v; S.setIsDirty(true); _refreshStatusBadge(); }),
+    ], gen.status, function(v) { S.getGeneral().status = v; S.setIsDirty(true); _refreshStatusBadge(); }),
   ]));
 
   // ── Batch section — only shown for parent or child orders ────────────────
-  var gen = S.getGeneral();
   if (gen.isParent || gen.isChild) {
     var batchFields = [];
 
@@ -307,12 +427,12 @@ function buildGeneralInputs() {
       function(v) { S.getGeneral().batchNotes = v; S.setIsDirty(true); }
     ));
 
-    wrap.appendChild(buildInputSection('Batch', batchFields));
+    wrap.appendChild(buildCollapsibleSection('Batch', batchFields));
   }
 
   // ── Notes section ────────────────────────────────────────────────────────
-  wrap.appendChild(buildInputSection('Notes', [
-    buildTextareaInput('Notes', 'mr-g-notes', S.getGeneral().notes, function(v) { S.getGeneral().notes = v; S.setIsDirty(true); }),
+  wrap.appendChild(buildCollapsibleSection('Notes', [
+    buildTextareaInput('Additional Details', 'mr-g-notes', gen.notes, function(v) { S.getGeneral().notes = v; S.setIsDirty(true); }),
   ]));
 
   return wrap;
@@ -330,7 +450,7 @@ function buildDoNumberInput() {
   wrap.appendChild(fLabel('DO Number', 'mr-g-do-base'));
 
   if (gen.isChild) {
-    // ── Child: full DO number read-only, suffix visually highlighted ─────
+    // ── Child: full DO number read-only, suffix and total visually highlighted
     var row = document.createElement('div');
     Object.assign(row.style, { display: 'flex', alignItems: 'center', gap: '0' });
 
@@ -344,17 +464,27 @@ function buildDoNumberInput() {
     });
     basePart.textContent = parsed.base || gen.doNumber;
 
+    // Look up total batch count from the parent order in the session
+    var parentOrder = S.findOrder(function(o) {
+      return !o.isChild && DON.getBaseNumber(o.doNumber || '') === gen.parentDoNumber;
+    });
+    var totalBatches = parentOrder ? parentOrder.childCount : null;
+    var suffixDisplay = '-' + (parsed.suffix || '??');
+    if (totalBatches) suffixDisplay += '/' + String(totalBatches).padStart(2, '0');
+
+    var isFinal = DON.isTerminating(gen.doNumber);
     var suffixPart = document.createElement('div');
     Object.assign(suffixPart.style, {
       padding: '6px 10px', fontSize: '11px', fontFamily: 'inherit',
-      background: DON.isTerminating(gen.doNumber) ? 'rgba(46,196,182,0.15)' : 'rgba(255,255,255,0.04)',
-      border: '2px solid ' + (DON.isTerminating(gen.doNumber) ? 'rgba(46,196,182,0.4)' : 'rgba(255,255,255,0.12)'),
+      background: isFinal ? 'rgba(46,196,182,0.15)' : 'rgba(255,255,255,0.04)',
+      border: '2px solid ' + (isFinal ? 'rgba(46,196,182,0.4)' : 'rgba(255,255,255,0.12)'),
       borderRadius: '0 3px 3px 0',
-      color: DON.isTerminating(gen.doNumber) ? '#2ec4b6' : '#e9c46a',
+      color: isFinal ? '#2ec4b6' : '#e9c46a',
       fontWeight: '700', letterSpacing: '1px',
       flexShrink: '0',
     });
-    suffixPart.textContent = '-' + (parsed.suffix || '??');
+    suffixPart.textContent = suffixDisplay;
+    if (totalBatches) suffixPart.title = 'Batch ' + (parseInt(parsed.suffix, 10) + 1) + ' of ' + totalBatches;
 
     row.appendChild(basePart);
     row.appendChild(suffixPart);

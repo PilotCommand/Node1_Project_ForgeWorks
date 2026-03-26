@@ -232,15 +232,33 @@ export function setUnitSystem(v)       { _unitSystem = v; }
 
 var _general = {
   // Document
-  doNumber:    'DO-001',
-  partNumber:  '',
-  partName:    '',
-  revision:    'A',
-  // People
-  customer:    '',
-  engineer:    '',
+  doNumber:    '',
+  revision:    '',
+  author:      '',
+  estimator:   '',
+  // Customer
+  company:     '',
+  customerNum: '',
+  poNumber:    '',
+  companyPhone:'',
+  companyFax:  '',
+  companyEmail:'',
+  addrLine1:   '',
+  addrLine2:   '',
+  addrCity:    '',
+  addrState:   '',
+  addrZip:     '',
+  addrCountry: '',
+  // Buyer
+  buyerName:   '',
+  buyerPhone:  '',
+  buyerEmail:  '',
+  buyerFax:    '',
   // Status
-  dateCreated: new Date().toISOString().slice(0, 10),
+  dateWritten:  '',
+  datePromise:  '',
+  dateShip:     '',
+  dateArrival:  '',
   status:      'draft',     // 'draft' | 'review' | 'approved' | 'released' | 'obsolete'
   notes:       '',
   // Material defaults (overridden by Stock In node params in calculations)
@@ -268,12 +286,29 @@ export function patchGeneral(obj) {
 // Full reset back to defaults — used when clearing a session.
 export function resetGeneral() {
   _general.doNumber       = '';
-  _general.partNumber     = '';
-  _general.partName       = '';
   _general.revision       = '';
-  _general.customer       = '';
-  _general.engineer       = '';
-  _general.dateCreated    = new Date().toISOString().slice(0, 10);
+  _general.author         = '';
+  _general.estimator    = '';
+  _general.company      = '';
+  _general.customerNum  = '';
+  _general.poNumber     = '';
+  _general.companyPhone = '';
+  _general.companyFax   = '';
+  _general.companyEmail = '';
+  _general.addrLine1    = '';
+  _general.addrLine2    = '';
+  _general.addrCity     = '';
+  _general.addrState    = '';
+  _general.addrZip      = '';
+  _general.addrCountry  = '';
+  _general.buyerName    = '';
+  _general.buyerPhone   = '';
+  _general.buyerEmail   = '';
+  _general.buyerFax     = '';
+  _general.dateWritten  = new Date().toISOString().slice(0, 10);
+  _general.datePromise  = '';
+  _general.dateShip     = '';
+  _general.dateArrival  = '';
   _general.status         = 'draft';
   _general.notes          = '';
   _general.material       = '4140';
