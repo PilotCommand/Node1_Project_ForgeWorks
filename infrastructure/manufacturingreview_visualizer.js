@@ -40,7 +40,10 @@ var _canvas    = null;
 var _animFrame = null;
 var _currentMesh = null;  // the THREE.Object3D currently in the scene
 
-var _activeContext = null;  // last context passed to refreshVisualizer
+var _activeContext   = null;
+var _partYOffset     = false;
+var _axisLabelMode   = 'screen';  // 'screen' | 'part' | 'none'
+var _htmlAxisLabels  = null;
 
 // ---------------------------------------------------------------------------
 // Public: buildVisualizerPanel
@@ -78,6 +81,55 @@ export function buildVisualizerPanel() {
   titleEl.textContent = '3D View';
   toolbar.appendChild(titleEl);
 
+  // ── Toolbar right side: Y offset checkbox + Reset View button ────────────
+  var rightGroup = document.createElement('div');
+  Object.assign(rightGroup.style, { display: 'flex', alignItems: 'center', gap: '10px' });
+
+  // Axis label mode dropdown
+  var axisSel = document.createElement('select');
+  Object.assign(axisSel.style, {
+    background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.15)',
+    borderRadius: '2px', color: '#7a9aaa', fontSize: '8px', letterSpacing: '1px',
+    padding: '3px 6px', cursor: 'pointer', fontFamily: 'inherit',
+    outline: 'none',
+  });
+  [
+    ['screen',       'Label on Screen'],
+    ['part',         'Label on Part'],
+    ['neg_screen',   'Negatives on Screen'],
+    ['neg_part',     'Negatives on Part'],
+    ['none',         'No Labels'],
+  ].forEach(function(opt) {
+    var o = document.createElement('option');
+    o.value = opt[0]; o.textContent = opt[1];
+    if (opt[0] === _axisLabelMode) o.selected = true;
+    axisSel.appendChild(o);
+  });
+  axisSel.addEventListener('change', function() {
+    _axisLabelMode = axisSel.value;
+  });
+  rightGroup.appendChild(axisSel);
+
+  // Y offset toggle
+  var offsetLabel = document.createElement('label');
+  Object.assign(offsetLabel.style, {
+    display: 'flex', alignItems: 'center', gap: '5px',
+    cursor: 'pointer', color: '#7a9aaa', fontSize: '8px', letterSpacing: '1px',
+    textTransform: 'uppercase', userSelect: 'none',
+  });
+  var offsetCheck = document.createElement('input');
+  offsetCheck.type    = 'checkbox';
+  offsetCheck.checked = _partYOffset;
+  Object.assign(offsetCheck.style, { cursor: 'pointer', accentColor: '#50d080' });
+  offsetCheck.addEventListener('change', function() {
+    _partYOffset = offsetCheck.checked;
+    // Re-render current context with new offset
+    if (_activeContext) refreshVisualizer(_activeContext);
+  });
+  offsetLabel.appendChild(offsetCheck);
+  offsetLabel.appendChild(document.createTextNode('Lift Part'));
+  rightGroup.appendChild(offsetLabel);
+
   // Reset camera button
   var resetBtn = document.createElement('button');
   Object.assign(resetBtn.style, {
@@ -97,7 +149,8 @@ export function buildVisualizerPanel() {
     resetBtn.style.borderColor = 'rgba(255,255,255,0.15)';
   });
   resetBtn.addEventListener('click', function() { resetCamera(); });
-  toolbar.appendChild(resetBtn);
+  rightGroup.appendChild(resetBtn);
+  toolbar.appendChild(rightGroup);
   panel.appendChild(toolbar);
 
   // ── Canvas wrapper ────────────────────────────────────────────────────────
@@ -106,6 +159,38 @@ export function buildVisualizerPanel() {
     flex: '1', position: 'relative', overflow: 'hidden',
   });
   panel.appendChild(_container);
+
+  // ── HTML axis label overlays — project() keeps them attached to 3D points ─
+  // Anchor positions are computed live in _updateHtmlAxisLabels relative to camera distance.
+  function makeAxisDiv(text, color) {
+    var d = document.createElement('div');
+    Object.assign(d.style, {
+      position:    'absolute',
+      pointerEvents: 'none',
+      fontSize:    '11px',
+      fontWeight:  '700',
+      fontFamily:  'Consolas, monospace',
+      letterSpacing: '1px',
+      color:       color,
+      textShadow:  '0 0 6px ' + color + ', 0 1px 3px rgba(0,0,0,0.8)',
+      transform:   'translate(-50%, -50%)',
+      zIndex:      '5',
+      opacity:     '0',
+      transition:  'opacity 0.1s ease',
+    });
+    d.textContent = text;
+    _container.appendChild(d);
+    return d;
+  }
+
+  _htmlAxisLabels = {
+    x:  makeAxisDiv('+X', '#ff4444'),
+    y:  makeAxisDiv('+Y', '#22dd66'),
+    z:  makeAxisDiv('+Z', '#4488ff'),
+    nx: makeAxisDiv('-X', '#ff4444'),
+    ny: makeAxisDiv('-Y', '#22dd66'),
+    nz: makeAxisDiv('-Z', '#4488ff'),
+  };
 
   // ── Placeholder (shown when nothing to display) ────────────────────────
   var placeholder = document.createElement('div');
@@ -167,6 +252,14 @@ export function refreshVisualizer(context) {
   if (obj) {
     _clearMesh();
     _currentMesh = obj;
+
+    // If Y offset is enabled, lift the part so its base sits on the grid
+    if (_partYOffset) {
+      var bbox = new THREE.Box3().setFromObject(_currentMesh);
+      var lowestY = bbox.min.y;
+      if (lowestY < 0) _currentMesh.position.y -= lowestY;
+    }
+
     _scene.add(_currentMesh);
     _fitCamera(_currentMesh);
   }
@@ -210,10 +303,8 @@ function _initThree() {
   fill.position.set(-1, 0.5, -1);
   _scene.add(fill);
 
-  // Grid helper — subtle
-  var grid = new THREE.GridHelper(400, 20, 0x1a2a38, 0x1a2a38);
-  grid.position.y = 0;
-  _scene.add(grid);
+  // Grid — shader-based with labels (matches forge floor aesthetic)
+  _buildGrid();
 
   // Camera
   _camera = new THREE.PerspectiveCamera(45, w / h, 0.1, 100000);
@@ -237,6 +328,8 @@ function _initThree() {
   function animate() {
     _animFrame = requestAnimationFrame(animate);
     _controls.update();
+    _updateGrid();
+    _updateHtmlAxisLabels();
     _renderer.render(_scene, _camera);
   }
   animate();
@@ -298,8 +391,433 @@ function _fitCamera(obj) {
 }
 
 // ---------------------------------------------------------------------------
-// Part material (shared across all geometries)
+// Grid — shader-based infinite grid with fade + axis labels (matches forge floor)
 // ---------------------------------------------------------------------------
+
+var _gridMaterial  = null;
+var _labelGroup    = null;
+var _labelPool     = [];     // recycled sprites for numeric labels
+var _axisLabels    = {};     // { xLabel, yLabel, originLabel }
+
+function _buildGrid() {
+  var geo = new THREE.PlaneGeometry(20000, 20000);
+
+  _gridMaterial = new THREE.ShaderMaterial({
+    uniforms: {
+      uCamGround:  { value: new THREE.Vector2(0, 0) },
+      uFadeStart:  { value: 100.0 },
+      uFadeEnd:    { value: 500.0 },
+      uGridUnit:   { value: 1.0 },   // mm per minor grid square
+      uMinorFade:  { value: 1.0 },   // 0 = major only, 1 = minor fully visible
+    },
+    vertexShader: [
+      'varying vec2 vWorldXZ;',
+      'void main() {',
+      '  vec4 wp = modelMatrix * vec4(position, 1.0);',
+      '  vWorldXZ = wp.xz;',
+      '  gl_Position = projectionMatrix * viewMatrix * wp;',
+      '}',
+    ].join('\n'),
+    fragmentShader: [
+      'varying vec2 vWorldXZ;',
+      'uniform vec2 uCamGround;',
+      'uniform float uFadeStart;',
+      'uniform float uFadeEnd;',
+      'uniform float uGridUnit;',
+      'uniform float uMinorFade;',
+      '',
+      'float gridLine(float coord, float width) {',
+      '  float d = abs(fract(coord + 0.5) - 0.5);',
+      '  float fw = fwidth(coord);',
+      '  return 1.0 - smoothstep(width - fw, width + fw, d);',
+      '}',
+      '',
+      'void main() {',
+      '  float dist = distance(vWorldXZ, uCamGround);',
+      '  float t = clamp((dist - uFadeStart) / (uFadeEnd - uFadeStart), 0.0, 1.0);',
+      '  float fade = 1.0 - t * t * (3.0 - 2.0 * t);',
+      '  if (fade < 0.005) discard;',
+      '',
+      '  vec2 scaled = vWorldXZ / uGridUnit;',
+      '',
+      '  // Minor lines — every 1 unit, fade out when zoomed out',
+      '  float thinX = gridLine(scaled.x, 0.04);',
+      '  float thinZ = gridLine(scaled.y, 0.04);',
+      '  float thin = max(thinX, thinZ) * uMinorFade;',
+      '',
+      '  // Major lines — every 10 units, always visible',
+      '  float boldX = gridLine(scaled.x / 10.0, 0.008);',
+      '  float boldZ = gridLine(scaled.y / 10.0, 0.008);',
+      '  float bold = max(boldX, boldZ);',
+      '',
+      '  // Axis lines — thicker, brighter',
+      '  float fwX = fwidth(vWorldXZ.y);',
+      '  float fwZ = fwidth(vWorldXZ.x);',
+      '  float onX = 1.0 - smoothstep(0.10 - fwX, 0.10 + fwX, abs(vWorldXZ.y));',
+      '  float onZ = 1.0 - smoothstep(0.10 - fwZ, 0.10 + fwZ, abs(vWorldXZ.x));',
+      '',
+      '  vec3 thinColor = vec3(0.30, 0.33, 0.38);',
+      '  vec3 boldColor = vec3(0.55, 0.60, 0.68);',
+      '  vec3 xAxisColor = vec3(1.0, 0.20, 0.20);',
+      '  vec3 zAxisColor = vec3(0.20, 0.48, 1.0);',
+      '',
+      '  vec3 col = thinColor;',
+      '  float alpha = thin * 0.35;',
+      '  col = mix(col, boldColor, bold);',
+      '  alpha = max(alpha, bold * 0.70);',
+      '  col = mix(col, xAxisColor, onX);',
+      '  alpha = max(alpha, onX * 0.90);',
+      '  col = mix(col, zAxisColor, onZ);',
+      '  alpha = max(alpha, onZ * 0.90);',
+      '  alpha *= fade;',
+      '  if (alpha < 0.005) discard;',
+      '  gl_FragColor = vec4(col, alpha);',
+      '}',
+    ].join('\n'),
+    transparent: true,
+    depthWrite:  false,
+    side:        THREE.DoubleSide,
+    extensions:  { derivatives: true },
+  });
+
+  var gridPlane = new THREE.Mesh(geo, _gridMaterial);
+  gridPlane.rotation.x = -Math.PI / 2;
+  gridPlane.position.y = -0.5;    // sit slightly below the part origin
+  _scene.add(gridPlane);
+
+  // ── Y axis — vertical green line through origin ───────────────────────────
+  var yAxisGeo = new THREE.BufferGeometry().setFromPoints([
+    new THREE.Vector3(0, -2000, 0),
+    new THREE.Vector3(0,  2000, 0),
+  ]);
+  var yAxisMat = new THREE.LineBasicMaterial({ color: 0x22dd66, transparent: true, opacity: 0.85, depthWrite: false });
+  _scene.add(new THREE.Line(yAxisGeo, yAxisMat));
+
+  // ── Label sprites — numeric pool only (axis names are HTML overlays) ──────
+  _labelGroup = new THREE.Group();
+  _scene.add(_labelGroup);
+
+  var poolSize = 80;
+  for (var i = 0; i < poolSize; i++) {
+    var spr = _makeTextSprite('0', '#888888');
+    spr.visible = false;
+    _labelGroup.add(spr);
+    _labelPool.push(spr);
+  }
+
+  // Origin marker sprite (small "0" at grid origin)
+  _axisLabels.origin = _makeTextSprite('0', '#aabbcc', 0.9);
+  _axisLabels.origin.visible = false;
+  _labelGroup.add(_axisLabels.origin);
+}
+
+/**
+ * Recompute grid density and label positions based on current camera height.
+ * Call every frame from the animation loop.
+ */
+function _updateGrid() {
+  if (!_gridMaterial || !_camera) return;
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // GRID VISUAL SETTINGS — tweak these to adjust the look
+  // ─────────────────────────────────────────────────────────────────────────
+  var CFG = {
+    // How many minor grid divisions are "ideal" across the visible area
+    // Lower = coarser grid, Higher = finer grid
+    minorDivisionsTarget:  10,
+
+    // Fraction of camera distance used for fade start/end
+    fadeStartFraction:  0.5,
+    fadeEndFraction:    1.8,
+
+    // Minor lines fade out when they'd be smaller than this fraction of viewport
+    // 0.008 = start fading when minor lines are ~0.8% of view width apart
+    minorFadeIn:   0.008,   // below this → fully hidden
+    minorFadeOut:  0.016,   // above this → fully visible
+
+    // Sprite size as a fraction of camera distance (so they stay same screen size)
+    numericSpriteScale: 0.045,   // for the axis number labels
+    axisSpriteScale:    0.06,    // for the X / Y / Z name labels
+
+    // All axis labels and numbers share this opacity
+    labelOpacity:  0.90,
+
+    // Y label floats at this fraction of camera distance above origin
+    // (currently unused — Y label is pinned to AX/AY/AZ above)
+
+    // Labels sit this many units above the grid plane
+    labelY: 1.0,
+  };
+  // ─────────────────────────────────────────────────────────────────────────
+
+  var target = _controls ? _controls.target : new THREE.Vector3();
+  var height = _camera.position.distanceTo(target);
+
+  // Choose minor grid unit — snap to clean engineering values
+  var SNAPS = [1, 2, 5, 10, 20, 50, 100, 200, 500, 1000, 2000, 5000];
+  var desiredMinorSpacing = height / CFG.minorDivisionsTarget;
+  var unit = SNAPS[SNAPS.length - 1];
+  for (var si = 0; si < SNAPS.length; si++) {
+    if (SNAPS[si] >= desiredMinorSpacing) { unit = SNAPS[si]; break; }
+  }
+
+  var majorUnit  = unit * 10;
+  var fadeStart  = height * CFG.fadeStartFraction;
+  var fadeEnd    = height * CFG.fadeEndFraction;
+
+  // Minor fade — crossfade minor lines in/out based on screen density
+  var minorScreenSize = unit / height;
+  var minorFade = Math.min(1.0, Math.max(0.0,
+    (minorScreenSize - CFG.minorFadeIn) / (CFG.minorFadeOut - CFG.minorFadeIn)
+  ));
+
+  _gridMaterial.uniforms.uCamGround.value.set(target.x, target.z);
+  _gridMaterial.uniforms.uFadeStart.value  = fadeStart;
+  _gridMaterial.uniforms.uFadeEnd.value    = fadeEnd;
+  _gridMaterial.uniforms.uGridUnit.value   = unit;
+  _gridMaterial.uniforms.uMinorFade.value  = minorFade;
+
+  // Sprite world sizes — proportional to camera distance
+  var numSize  = height * CFG.numericSpriteScale;
+  var labelY   = CFG.labelY;
+
+  // Label step: use minor unit when lines are visible, major unit when zoomed out
+  var labelStep = minorFade > 0.3 ? unit : majorUnit;
+
+  // ── Number labels ─────────────────────────────────────────────────────────
+  var poolIdx = 0;
+  for (var pi = 0; pi < _labelPool.length; pi++) _labelPool[pi].visible = false;
+
+  if (_axisLabelMode === 'none') {
+    if (_axisLabels.origin) _axisLabels.origin.visible = false;
+    return;
+  }
+
+  var hasNegNums = _axisLabelMode === 'neg_screen' || _axisLabelMode === 'neg_part';
+  var onPart     = (_axisLabelMode === 'part' || _axisLabelMode === 'neg_part') && _currentMesh;
+
+  if (onPart) {
+    // ── Part mode: labels at the bbox extents on each axis ──────────────────
+    var bbox = new THREE.Box3().setFromObject(_currentMesh);
+
+    var partPoints = [
+      { val: bbox.max.x, pos: new THREE.Vector3(bbox.max.x, labelY, 0), color: '#ff5555' },
+      { val: bbox.max.y, pos: new THREE.Vector3(0, bbox.max.y,        0), color: '#44cc77' },
+      { val: bbox.max.z, pos: new THREE.Vector3(0, labelY, bbox.max.z), color: '#5599ff' },
+    ];
+
+    if (hasNegNums) {
+      partPoints.push(
+        { val: bbox.min.x, pos: new THREE.Vector3(bbox.min.x, labelY, 0), color: '#ff5555' },
+        { val: bbox.min.y, pos: new THREE.Vector3(0, bbox.min.y,        0), color: '#44cc77' },
+        { val: bbox.min.z, pos: new THREE.Vector3(0, labelY, bbox.min.z), color: '#5599ff' }
+      );
+    }
+
+    partPoints.forEach(function(pt) {
+      if (poolIdx >= _labelPool.length) return;
+      var spr = _labelPool[poolIdx++];
+      _updateSpriteText(spr, _fmtDim(Math.round(pt.val), unit), pt.color);
+      spr.scale.set(numSize, numSize, 1);
+      spr.position.copy(pt.pos);
+      spr.material.opacity = CFG.labelOpacity;
+      spr.visible = true;
+    });
+
+    if (_axisLabels.origin) _axisLabels.origin.visible = false;
+
+  } else {
+    // ── Screen mode: numbers on their axis at every label step ───────────────
+    // labelStep = minor unit when zoomed in, major unit when zoomed out
+    var range = fadeEnd * 0.80;
+    var minX  = Math.floor((target.x - range) / labelStep) * labelStep;
+    var maxX  = Math.ceil ((target.x + range) / labelStep) * labelStep;
+    var minZ  = Math.floor((target.z - range) / labelStep) * labelStep;
+    var maxZ  = Math.ceil ((target.z + range) / labelStep) * labelStep;
+
+    for (var lx = minX; lx <= maxX; lx += labelStep) {
+      if (poolIdx >= _labelPool.length) break;
+      if (!hasNegNums && lx < 0) continue;
+      var dx  = lx - target.x, dzx = -target.z;
+      var dist = Math.sqrt(dx * dx + dzx * dzx);
+      if (dist > fadeEnd) continue;
+      var spr = _labelPool[poolIdx++];
+      var val = Math.round(lx);
+      // Major line labels are brighter, minor line labels are dimmer
+      var onMajor = (Math.round(lx / majorUnit) * majorUnit === Math.round(lx));
+      var col = val === 0 ? '#ffffff' : '#ff5555';
+      _updateSpriteText(spr, _fmtDim(val, unit), col);
+      spr.scale.set(numSize, numSize, 1);
+      spr.position.set(lx, labelY, 0);   // ON the X axis
+      var ft = Math.max(0, Math.min(1, (dist - fadeStart) / (fadeEnd - fadeStart)));
+      var baseOp = onMajor ? CFG.labelOpacity : CFG.labelOpacity * 0.55;
+      spr.material.opacity = (1.0 - ft * ft * (3.0 - 2.0 * ft)) * baseOp;
+      spr.visible = spr.material.opacity > 0.01;
+    }
+
+    for (var lz = minZ; lz <= maxZ; lz += labelStep) {
+      if (poolIdx >= _labelPool.length) break;
+      if (lz === 0) continue;
+      if (!hasNegNums && lz < 0) continue;
+      var dx2  = -target.x, dz2 = lz - target.z;
+      var dist2 = Math.sqrt(dx2 * dx2 + dz2 * dz2);
+      if (dist2 > fadeEnd) continue;
+      var spr2 = _labelPool[poolIdx++];
+      var val2 = Math.round(lz);
+      var onMajor2 = (Math.round(lz / majorUnit) * majorUnit === Math.round(lz));
+      _updateSpriteText(spr2, _fmtDim(val2, unit), '#5599ff');
+      spr2.scale.set(numSize, numSize, 1);
+      spr2.position.set(0, labelY, lz);   // ON the Z axis
+      var ft2 = Math.max(0, Math.min(1, (dist2 - fadeStart) / (fadeEnd - fadeStart)));
+      var baseOp2 = onMajor2 ? CFG.labelOpacity : CFG.labelOpacity * 0.55;
+      spr2.material.opacity = (1.0 - ft2 * ft2 * (3.0 - 2.0 * ft2)) * baseOp2;
+      spr2.visible = spr2.material.opacity > 0.01;
+    }
+
+    // Origin marker
+    if (_axisLabels.origin) {
+      _axisLabels.origin.scale.set(numSize * 0.85, numSize * 0.85, 1);
+      _axisLabels.origin.position.set(0, labelY, 0);
+      _axisLabels.origin.material.opacity = CFG.labelOpacity;
+      _axisLabels.origin.visible = true;
+    }
+  }
+
+  // HTML axis labels are updated separately in _updateHtmlAxisLabels()
+}
+
+/**
+ * Project the 3D anchor positions for X/Y/Z labels into percentage-based
+ * CSS coordinates and move the HTML divs accordingly.
+ * Called every frame from the animation loop.
+ */
+function _updateHtmlAxisLabels() {
+  if (!_htmlAxisLabels || !_camera || !_container) return;
+
+  var w = _container.offsetWidth;
+  var h = _container.offsetHeight;
+  if (w < 1 || h < 1) return;
+
+  var allDivs = [_htmlAxisLabels.x,  _htmlAxisLabels.y,  _htmlAxisLabels.z,
+                 _htmlAxisLabels.nx, _htmlAxisLabels.ny, _htmlAxisLabels.nz];
+
+  // ── No Labels ─────────────────────────────────────────────────────────────
+  if (_axisLabelMode === 'none') {
+    allDivs.forEach(function(d) { d.style.opacity = '0'; });
+    return;
+  }
+
+  var target  = _controls ? _controls.target : new THREE.Vector3();
+  var dist    = _camera.position.distanceTo(target);
+  var hasNeg  = _axisLabelMode === 'neg_screen' || _axisLabelMode === 'neg_part';
+  var onPart  = (_axisLabelMode === 'part' || _axisLabelMode === 'neg_part') && _currentMesh;
+  var d       = dist * 0.35;
+
+  // Update label text — plain X/Y/Z for basic modes, +X/-X etc for negative modes
+  _htmlAxisLabels.x.textContent  = hasNeg ? '+X' : 'X';
+  _htmlAxisLabels.y.textContent  = hasNeg ? '+Y' : 'Y';
+  _htmlAxisLabels.z.textContent  = hasNeg ? '+Z' : 'Z';
+
+  var px, py, pz, nx, ny, nz;
+
+  if (onPart) {
+    var bbox = new THREE.Box3().setFromObject(_currentMesh);
+    px = new THREE.Vector3( bbox.max.x, 0,          0          );
+    py = new THREE.Vector3( 0,          bbox.max.y,  0          );
+    pz = new THREE.Vector3( 0,          0,           bbox.max.z );
+    nx = new THREE.Vector3( bbox.min.x, 0,          0          );
+    ny = new THREE.Vector3( 0,          bbox.min.y,  0          );
+    nz = new THREE.Vector3( 0,          0,           bbox.min.z );
+  } else {
+    px = new THREE.Vector3( d, 0, 0);
+    py = new THREE.Vector3( 0, d, 0);
+    pz = new THREE.Vector3( 0, 0, d);
+    nx = new THREE.Vector3(-d, 0, 0);
+    ny = new THREE.Vector3( 0,-d, 0);
+    nz = new THREE.Vector3( 0, 0,-d);
+  }
+
+  var pairs = [
+    { div: _htmlAxisLabels.x,  world: px, show: true   },
+    { div: _htmlAxisLabels.y,  world: py, show: true   },
+    { div: _htmlAxisLabels.z,  world: pz, show: true   },
+    { div: _htmlAxisLabels.nx, world: nx, show: hasNeg },
+    { div: _htmlAxisLabels.ny, world: ny, show: hasNeg },
+    { div: _htmlAxisLabels.nz, world: nz, show: hasNeg },
+  ];
+
+  var tmp = new THREE.Vector3();
+
+  pairs.forEach(function(pair) {
+    if (!pair.show) { pair.div.style.opacity = '0'; return; }
+
+    tmp.copy(pair.world);
+    tmp.project(_camera);
+
+    var pctX = ( tmp.x * 0.5 + 0.5) * 100;
+    var pctY = (-tmp.y * 0.5 + 0.5) * 100;
+
+    var offScreen = tmp.z > 1 || pctX < -10 || pctX > 110 || pctY < -10 || pctY > 110;
+
+    pair.div.style.left    = pctX + '%';
+    pair.div.style.top     = pctY + '%';
+    pair.div.style.opacity = offScreen ? '0' : '0.92';
+  });
+}
+
+/**
+ * Format a dimension value for display as a grid label.
+ * Shows mm for small units, cm for mid, m for large.
+ */
+function _fmtDim(val, unit) {
+  if (unit >= 1000) return (val / 1000).toFixed(val % 1000 === 0 ? 0 : 1) + 'm';
+  if (unit >= 10)   return (val / 10).toFixed(0) + 'cm';
+  return val + 'mm';
+}
+
+// ---------------------------------------------------------------------------
+// Text sprite helpers — ported from forgehousebuilder.js
+// ---------------------------------------------------------------------------
+
+function _makeTextSprite(text, color, scaleMult) {
+  var canvas = document.createElement('canvas');
+  canvas.width = 256; canvas.height = 256;
+  var ctx = canvas.getContext('2d');
+  ctx.clearRect(0, 0, 256, 256);
+  ctx.font = 'bold 80px Consolas, monospace';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillStyle = color || '#ffffff';
+  ctx.fillText(text, 128, 128);
+
+  var tex = new THREE.CanvasTexture(canvas);
+  tex.minFilter = THREE.LinearFilter;
+
+  var mat = new THREE.SpriteMaterial({ map: tex, transparent: true, depthTest: false });
+  var spr = new THREE.Sprite(mat);
+  var s = (scaleMult || 1.0) * 4.0;
+  spr.scale.set(s, s, 1);
+  spr.userData._canvas = canvas;
+  spr.userData._text   = text;
+  spr.userData._color  = color;
+  return spr;
+}
+
+function _updateSpriteText(sprite, text, color) {
+  if (sprite.userData._text === text && sprite.userData._color === color) return;
+  var canvas = sprite.userData._canvas;
+  if (!canvas) return;
+  var ctx = canvas.getContext('2d');
+  ctx.clearRect(0, 0, 256, 256);
+  ctx.font = 'bold 80px Consolas, monospace';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillStyle = color || '#ffffff';
+  ctx.fillText(text, 128, 128);
+  sprite.material.map.needsUpdate = true;
+  sprite.userData._text  = text;
+  sprite.userData._color = color;
+}
 
 function _makeMaterial(color) {
   return new THREE.MeshStandardMaterial({
@@ -563,6 +1081,8 @@ export function geometryFromNodeStep(step) {
 export function destroyVisualizer() {
   if (_animFrame) cancelAnimationFrame(_animFrame);
   _clearMesh();
+  if (_gridMaterial) { _gridMaterial.dispose(); _gridMaterial = null; }
+  _labelPool = []; _axisLabels = {}; _labelGroup = null;
   if (_renderer) { _renderer.dispose(); _renderer = null; }
   _scene = null; _camera = null; _controls = null;
   _container = null; _canvas = null; _activeContext = null;
