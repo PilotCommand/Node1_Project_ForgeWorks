@@ -427,10 +427,12 @@ var GRID_CFG = {
 };
 // ─────────────────────────────────────────────────────────────────────────
 
-var _gridGroup    = null;
-var _gridPlane    = 'xz';
-var _gridSprites  = [];
-var _fadeSphere   = null;   // THREE.Mesh — BackSide sphere, fades grid in world space
+var _gridGroup      = null;
+var _gridPlane      = 'xz';
+var _gridSprites    = [];    // positive grid numeric sprites
+var _negSprites     = [];    // negative grid numeric sprites
+var _partLabelGroup = null;  // sprites for 'part' / 'neg_part' bbox labels
+var _fadeSphere     = null;
 
 // ---------------------------------------------------------------------------
 // Simple fixed grid — three opacity tiers, no adaptive snapping
@@ -473,6 +475,7 @@ function _buildSimpleGrid(plane) {
     });
     _gridGroup = null;
     _gridSprites = [];
+    _negSprites  = [];
   }
 
   var cfg  = GRID_CFG;
@@ -513,82 +516,127 @@ function _buildSimpleGrid(plane) {
       vm2.push(-ext,0,z, ext,0,z);
     }
     // Axis lines
-    group.add(makeLines([-ext,0,0, ext,0,0], COLOR_X, cfg.axisOpacity));  // X axis
-    group.add(makeLines([0,0,-ext, 0,0,ext], COLOR_Z, cfg.axisOpacity));  // Z axis
+    group.add(makeLines([-ext,0,0, ext,0,0], COLOR_X, cfg.axisOpacity));
+    group.add(makeLines([0,0,-ext, 0,0,ext], COLOR_Z, cfg.axisOpacity));
 
-    // Sprite labels — along X axis (at z = labelOffset) and Z axis (at x = labelOffset)
-    for (var lx = -ext; lx <= ext; lx += majS) {
-      var spr = _makeSprite(String(lx), lx === 0 ? '#ffffff' : '#ff6666');
+    // Positive X sprites (x > 0 only)
+    for (var lx = majS; lx <= ext; lx += majS) {
+      var spr = _makeSprite(String(lx), '#ff6666');
       spr.position.set(lx, 1, cfg.labelOffset);
+      spr.userData.isPos = true;
       group.add(spr); _gridSprites.push(spr);
     }
-    for (var lz = -ext; lz <= ext; lz += majS) {
-      if (lz === 0) continue;  // origin already covered
+    // Origin
+    var sprO = _makeSprite('0', '#ffffff');
+    sprO.position.set(0, 1, cfg.labelOffset);
+    sprO.userData.isPos = true;
+    group.add(sprO); _gridSprites.push(sprO);
+    // Negative X sprites
+    for (var lxn = -majS; lxn >= -ext; lxn -= majS) {
+      var sprxn = _makeSprite(String(lxn), '#ff6666');
+      sprxn.position.set(lxn, 1, cfg.labelOffset);
+      sprxn.userData.isNeg = true;
+      group.add(sprxn); _negSprites.push(sprxn);
+    }
+    // Positive Z sprites (z > 0 only)
+    for (var lz = majS; lz <= ext; lz += majS) {
       var sprz = _makeSprite(String(lz), '#6699ff');
       sprz.position.set(cfg.labelOffset, 1, lz);
+      sprz.userData.isPos = true;
       group.add(sprz); _gridSprites.push(sprz);
+    }
+    // Negative Z sprites
+    for (var lzn = -majS; lzn >= -ext; lzn -= majS) {
+      var sprzn = _makeSprite(String(lzn), '#6699ff');
+      sprzn.position.set(cfg.labelOffset, 1, lzn);
+      sprzn.userData.isNeg = true;
+      group.add(sprzn); _negSprites.push(sprzn);
     }
 
   } else if (plane === 'xy') {
-    // Vertical plane at z=0
-    // Lines parallel to Y (x = v)
     for (var x2 = -ext; x2 <= ext; x2 += minS) {
       if (x2 === 0) continue;
       var vm3 = x2 % majS === 0 ? majorV : minorV;
       vm3.push(x2,-ext,0, x2,ext,0);
     }
-    // Lines parallel to X (y = v)
     for (var y2 = -ext; y2 <= ext; y2 += minS) {
       if (y2 === 0) continue;
       var vm4 = y2 % majS === 0 ? majorV : minorV;
       vm4.push(-ext,y2,0, ext,y2,0);
     }
-    // Axis lines
-    group.add(makeLines([-ext,0,0, ext,0,0], COLOR_X, cfg.axisOpacity));  // X axis
-    group.add(makeLines([0,-ext,0, 0,ext,0], COLOR_Y, cfg.axisOpacity));  // Y axis
+    group.add(makeLines([-ext,0,0, ext,0,0], COLOR_X, cfg.axisOpacity));
+    group.add(makeLines([0,-ext,0, 0,ext,0], COLOR_Y, cfg.axisOpacity));
 
-    // Sprite labels
-    for (var lx2 = -ext; lx2 <= ext; lx2 += majS) {
-      var sprx2 = _makeSprite(String(lx2), lx2 === 0 ? '#ffffff' : '#ff6666');
+    var sprO2 = _makeSprite('0', '#ffffff');
+    sprO2.position.set(0, cfg.labelOffset, 1);
+    sprO2.userData.isPos = true;
+    group.add(sprO2); _gridSprites.push(sprO2);
+    for (var lx2 = majS; lx2 <= ext; lx2 += majS) {
+      var sprx2 = _makeSprite(String(lx2), '#ff6666');
       sprx2.position.set(lx2, cfg.labelOffset, 1);
+      sprx2.userData.isPos = true;
       group.add(sprx2); _gridSprites.push(sprx2);
     }
-    for (var ly2 = -ext; ly2 <= ext; ly2 += majS) {
-      if (ly2 === 0) continue;
+    for (var lx2n = -majS; lx2n >= -ext; lx2n -= majS) {
+      var sprx2n = _makeSprite(String(lx2n), '#ff6666');
+      sprx2n.position.set(lx2n, cfg.labelOffset, 1);
+      sprx2n.userData.isNeg = true;
+      group.add(sprx2n); _negSprites.push(sprx2n);
+    }
+    for (var ly2 = majS; ly2 <= ext; ly2 += majS) {
       var spry2 = _makeSprite(String(ly2), '#66cc88');
       spry2.position.set(cfg.labelOffset, ly2, 1);
+      spry2.userData.isPos = true;
       group.add(spry2); _gridSprites.push(spry2);
+    }
+    for (var ly2n = -majS; ly2n >= -ext; ly2n -= majS) {
+      var spry2n = _makeSprite(String(ly2n), '#66cc88');
+      spry2n.position.set(cfg.labelOffset, ly2n, 1);
+      spry2n.userData.isNeg = true;
+      group.add(spry2n); _negSprites.push(spry2n);
     }
 
   } else if (plane === 'zy') {
-    // Vertical plane at x=0
-    // Lines parallel to Y (z = v)
     for (var z3 = -ext; z3 <= ext; z3 += minS) {
       if (z3 === 0) continue;
       var vm5 = z3 % majS === 0 ? majorV : minorV;
       vm5.push(0,-ext,z3, 0,ext,z3);
     }
-    // Lines parallel to Z (y = v)
     for (var y3 = -ext; y3 <= ext; y3 += minS) {
       if (y3 === 0) continue;
       var vm6 = y3 % majS === 0 ? majorV : minorV;
       vm6.push(0,y3,-ext, 0,y3,ext);
     }
-    // Axis lines
-    group.add(makeLines([0,0,-ext, 0,0,ext], COLOR_Z, cfg.axisOpacity));  // Z axis
-    group.add(makeLines([0,-ext,0, 0,ext,0], COLOR_Y, cfg.axisOpacity));  // Y axis
+    group.add(makeLines([0,0,-ext, 0,0,ext], COLOR_Z, cfg.axisOpacity));
+    group.add(makeLines([0,-ext,0, 0,ext,0], COLOR_Y, cfg.axisOpacity));
 
-    // Sprite labels
-    for (var lz3 = -ext; lz3 <= ext; lz3 += majS) {
-      var sprz3 = _makeSprite(String(lz3), lz3 === 0 ? '#ffffff' : '#6699ff');
+    var sprO3 = _makeSprite('0', '#ffffff');
+    sprO3.position.set(1, cfg.labelOffset, 0);
+    sprO3.userData.isPos = true;
+    group.add(sprO3); _gridSprites.push(sprO3);
+    for (var lz3 = majS; lz3 <= ext; lz3 += majS) {
+      var sprz3 = _makeSprite(String(lz3), '#6699ff');
       sprz3.position.set(1, cfg.labelOffset, lz3);
+      sprz3.userData.isPos = true;
       group.add(sprz3); _gridSprites.push(sprz3);
     }
-    for (var ly3 = -ext; ly3 <= ext; ly3 += majS) {
-      if (ly3 === 0) continue;
+    for (var lz3n = -majS; lz3n >= -ext; lz3n -= majS) {
+      var sprz3n = _makeSprite(String(lz3n), '#6699ff');
+      sprz3n.position.set(1, cfg.labelOffset, lz3n);
+      sprz3n.userData.isNeg = true;
+      group.add(sprz3n); _negSprites.push(sprz3n);
+    }
+    for (var ly3 = majS; ly3 <= ext; ly3 += majS) {
       var spry3 = _makeSprite(String(ly3), '#66cc88');
       spry3.position.set(1, ly3, cfg.labelOffset);
+      spry3.userData.isPos = true;
       group.add(spry3); _gridSprites.push(spry3);
+    }
+    for (var ly3n = -majS; ly3n >= -ext; ly3n -= majS) {
+      var spry3n = _makeSprite(String(ly3n), '#66cc88');
+      spry3n.position.set(1, ly3n, cfg.labelOffset);
+      spry3n.userData.isNeg = true;
+      group.add(spry3n); _negSprites.push(spry3n);
     }
   }
 
@@ -634,8 +682,8 @@ function _buildSimpleGrid(plane) {
 
   var fadeMat = new THREE.ShaderMaterial({
     uniforms: {
-      uInner: { value: ext * 0.60 },   // ← inner radius — grid fully visible inside this
-      uOuter: { value: ext * 0.95 },   // ← outer radius — grid fully hidden outside this
+      uInner: { value: ext * 0.60 },
+      uOuter: { value: ext * 0.95 },
     },
     vertexShader: [
       'varying vec3 vWorldPos;',
@@ -652,36 +700,41 @@ function _buildSimpleGrid(plane) {
       'void main() {',
       '  ' + distLine,
       '  float t = clamp((dist - uInner) / (uOuter - uInner), 0.0, 1.0);',
-      '  float alpha = t * t * (3.0 - 2.0 * t);',  // smoothstep
+      '  float alpha = t * t * (3.0 - 2.0 * t);',
       '  if (alpha < 0.005) discard;',
       '  gl_FragColor = vec4(0.016, 0.031, 0.055, alpha);',
       '}',
     ].join('\n'),
     transparent: true,
     depthWrite:  false,
+    depthTest:   true,   // keeps depth so the part occludes naturally
     side:        THREE.DoubleSide,
   });
 
-  var fadeGeo   = new THREE.PlaneGeometry(ext * 4, ext * 4);
-  var fadeMesh  = new THREE.Mesh(fadeGeo, fadeMat);
+  var fadeGeo = new THREE.PlaneGeometry(ext * 4, ext * 4);
 
-  // Rotate to lie on the same plane as the grid
-  if (plane === 'xz') {
-    fadeMesh.rotation.x = -Math.PI / 2;
-    fadeMesh.position.y = 0.2;
-  } else if (plane === 'xy') {
-    fadeMesh.position.z = 0.2;
-  } else {
-    fadeMesh.rotation.y = Math.PI / 2;
-    fadeMesh.position.x = 0.2;
-  }
+  // Two planes bracketing the grid surface — one on each side.
+  // Whichever side the camera is on, that plane passes the depth test and renders.
+  // depthTest:true means the part’s depth buffer occludes the fade automatically.
+  var sideOffsets = {
+    xz: [ [0,  0.5, 0, -Math.PI/2, 0, 0],
+          [0, -0.5, 0, -Math.PI/2, 0, 0] ],
+    xy: [ [0, 0,  0.5, 0, 0, 0],
+          [0, 0, -0.5, 0, 0, 0] ],
+    zy: [ [ 0.5, 0, 0, 0, Math.PI/2, 0],
+          [-0.5, 0, 0, 0, Math.PI/2, 0] ],
+  }[plane];
 
-  // Store material ref so _updateGrid can scale the radii with camera distance
-  fadeMesh.userData.fadeMat = fadeMat;
-  group.add(fadeMesh);  // part of the group — disposed automatically on rebuild
-
-  // Keep a reference for _updateGrid
-  _fadeSphere = fadeMesh;
+  _fadeSphere = null;
+  sideOffsets.forEach(function(o) {
+    var mesh = new THREE.Mesh(fadeGeo, fadeMat);
+    mesh.position.set(o[0], o[1], o[2]);
+    mesh.rotation.set(o[3], o[4], o[5]);
+    mesh.renderOrder = 2;   // after grid (0), before part (1000)
+    mesh.userData.fadeMat = fadeMat;
+    group.add(mesh);
+    if (!_fadeSphere) _fadeSphere = mesh;
+  });
 }
 
 // Scale the fade radii with camera distance each frame so the visible circle
@@ -717,8 +770,7 @@ function _updateGrid() {
 }
 
 /**
- * Project the 3D anchor positions for X/Y/Z labels into percentage-based
- * CSS coordinates and move the HTML divs accordingly.
+ * Update HTML axis name labels (X/Y/Z divs) and numeric sprite visibility.
  * Called every frame from the animation loop.
  */
 function _updateHtmlAxisLabels() {
@@ -728,71 +780,154 @@ function _updateHtmlAxisLabels() {
   var h = _container.offsetHeight;
   if (w < 1 || h < 1) return;
 
-  var allDivs = [_htmlAxisLabels.x,  _htmlAxisLabels.y,  _htmlAxisLabels.z,
-                 _htmlAxisLabels.nx, _htmlAxisLabels.ny, _htmlAxisLabels.nz];
+  var mode   = _axisLabelMode;
+  var plane  = _gridPlane;
+  var hasNeg = mode === 'neg_screen' || mode === 'neg_part';
+  var onPart = (mode === 'part' || mode === 'neg_part') && _currentMesh;
+  var none   = mode === 'none';
 
-  // ── No Labels ─────────────────────────────────────────────────────────────
-  if (_axisLabelMode === 'none') {
-    allDivs.forEach(function(d) { d.style.opacity = '0'; });
-    return;
-  }
+  // Which axis name divs are relevant to the current plane
+  // Each plane has two in-plane axes plus one perpendicular
+  var planeAxes = {
+    xz: ['x', 'z', 'y'],
+    xy: ['x', 'y', 'z'],
+    zy: ['z', 'y', 'x'],
+  }[plane] || ['x', 'z', 'y'];
 
-  var target  = _controls ? _controls.target : new THREE.Vector3();
-  var dist    = _camera.position.distanceTo(target);
-  var hasNeg  = _axisLabelMode === 'neg_screen' || _axisLabelMode === 'neg_part';
-  var onPart  = (_axisLabelMode === 'part' || _axisLabelMode === 'neg_part') && _currentMesh;
-  var d       = dist * 0.35;
-
-  // Update label text — plain X/Y/Z for basic modes, +X/-X etc for negative modes
+  // Update +/- prefix text
   _htmlAxisLabels.x.textContent  = hasNeg ? '+X' : 'X';
   _htmlAxisLabels.y.textContent  = hasNeg ? '+Y' : 'Y';
   _htmlAxisLabels.z.textContent  = hasNeg ? '+Z' : 'Z';
+  _htmlAxisLabels.nx.textContent = '-X';
+  _htmlAxisLabels.ny.textContent = '-Y';
+  _htmlAxisLabels.nz.textContent = '-Z';
 
-  var px, py, pz, nx, ny, nz;
+  // Compute anchor positions
+  var target = _controls ? _controls.target : new THREE.Vector3();
+  var dist   = _camera.position.distanceTo(target);
+  var d      = dist * 0.35;
 
+  var pos = {}, neg = {};
   if (onPart) {
     var bbox = new THREE.Box3().setFromObject(_currentMesh);
-    px = new THREE.Vector3( bbox.max.x, 0,          0          );
-    py = new THREE.Vector3( 0,          bbox.max.y,  0          );
-    pz = new THREE.Vector3( 0,          0,           bbox.max.z );
-    nx = new THREE.Vector3( bbox.min.x, 0,          0          );
-    ny = new THREE.Vector3( 0,          bbox.min.y,  0          );
-    nz = new THREE.Vector3( 0,          0,           bbox.min.z );
+    pos.x = new THREE.Vector3(bbox.max.x, 0, 0);
+    pos.y = new THREE.Vector3(0, bbox.max.y, 0);
+    pos.z = new THREE.Vector3(0, 0, bbox.max.z);
+    neg.x = new THREE.Vector3(bbox.min.x, 0, 0);
+    neg.y = new THREE.Vector3(0, bbox.min.y, 0);
+    neg.z = new THREE.Vector3(0, 0, bbox.min.z);
   } else {
-    px = new THREE.Vector3( d, 0, 0);
-    py = new THREE.Vector3( 0, d, 0);
-    pz = new THREE.Vector3( 0, 0, d);
-    nx = new THREE.Vector3(-d, 0, 0);
-    ny = new THREE.Vector3( 0,-d, 0);
-    nz = new THREE.Vector3( 0, 0,-d);
+    pos.x = new THREE.Vector3( d,  0,  0);
+    pos.y = new THREE.Vector3( 0,  d,  0);
+    pos.z = new THREE.Vector3( 0,  0,  d);
+    neg.x = new THREE.Vector3(-d,  0,  0);
+    neg.y = new THREE.Vector3( 0, -d,  0);
+    neg.z = new THREE.Vector3( 0,  0, -d);
   }
 
+  // All pairs — show flag determined by mode and plane
   var pairs = [
-    { div: _htmlAxisLabels.x,  world: px, show: true   },
-    { div: _htmlAxisLabels.y,  world: py, show: true   },
-    { div: _htmlAxisLabels.z,  world: pz, show: true   },
-    { div: _htmlAxisLabels.nx, world: nx, show: hasNeg },
-    { div: _htmlAxisLabels.ny, world: ny, show: hasNeg },
-    { div: _htmlAxisLabels.nz, world: nz, show: hasNeg },
+    { div: _htmlAxisLabels.x,  world: pos.x, show: !none },
+    { div: _htmlAxisLabels.y,  world: pos.y, show: !none },
+    { div: _htmlAxisLabels.z,  world: pos.z, show: !none },
+    { div: _htmlAxisLabels.nx, world: neg.x, show: !none && hasNeg },
+    { div: _htmlAxisLabels.ny, world: neg.y, show: !none && hasNeg },
+    { div: _htmlAxisLabels.nz, world: neg.z, show: !none && hasNeg },
   ];
 
   var tmp = new THREE.Vector3();
-
   pairs.forEach(function(pair) {
     if (!pair.show) { pair.div.style.opacity = '0'; return; }
-
     tmp.copy(pair.world);
     tmp.project(_camera);
-
     var pctX = ( tmp.x * 0.5 + 0.5) * 100;
     var pctY = (-tmp.y * 0.5 + 0.5) * 100;
-
-    var offScreen = tmp.z > 1 || pctX < -10 || pctX > 110 || pctY < -10 || pctY > 110;
-
+    var off  = tmp.z > 1 || pctX < -10 || pctX > 110 || pctY < -10 || pctY > 110;
     pair.div.style.left    = pctX + '%';
     pair.div.style.top     = pctY + '%';
-    pair.div.style.opacity = offScreen ? '0' : '0.92';
+    pair.div.style.opacity = off ? '0' : '0.92';
   });
+
+  // ── Numeric sprite visibility ─────────────────────────────────────────────
+  _updateSpriteVisibility(mode, onPart);
+}
+
+function _updateSpriteVisibility(mode, onPart) {
+  var showPos  = mode !== 'none' && !onPart;
+  var showNeg  = (mode === 'neg_screen') && !onPart;
+  var showPart = onPart;
+
+  // Positive grid sprites
+  _gridSprites.forEach(function(s) { s.visible = showPos; });
+  // Negative grid sprites
+  _negSprites.forEach(function(s)  { s.visible = showNeg; });
+
+  // Part label sprites — rebuild if needed
+  if (showPart) {
+    _buildPartLabels();
+  } else {
+    _clearPartLabels();
+  }
+}
+
+function _clearPartLabels() {
+  if (_partLabelGroup) {
+    _scene.remove(_partLabelGroup);
+    _partLabelGroup.traverse(function(o) {
+      if (o.geometry) o.geometry.dispose();
+      if (o.material) o.material.dispose();
+    });
+    _partLabelGroup = null;
+  }
+}
+
+function _buildPartLabels() {
+  // Rebuild part labels only when mesh or plane changed — check a hash
+  var meshId   = _currentMesh ? _currentMesh.uuid : null;
+  var cacheKey = meshId + '|' + _gridPlane + '|' + _axisLabelMode;
+  if (_partLabelGroup && _partLabelGroup.userData.cacheKey === cacheKey) return;
+
+  _clearPartLabels();
+  if (!_currentMesh || !_scene) return;
+
+  var hasNeg = _axisLabelMode === 'neg_part';
+  var bbox   = new THREE.Box3().setFromObject(_currentMesh);
+  var off    = GRID_CFG.labelOffset;
+  var grp    = new THREE.Group();
+  grp.userData.cacheKey = cacheKey;
+
+  function addSpr(val, pos) {
+    var s = _makeSprite(String(Math.round(val)), val >= 0 ? '#ffdd88' : '#ffdd88');
+    s.position.copy(pos);
+    grp.add(s);
+  }
+
+  // Only show extents for the two axes that exist on the current grid plane
+  if (_gridPlane === 'xz') {
+    addSpr(bbox.max.x, new THREE.Vector3(bbox.max.x, 1, off));
+    addSpr(bbox.max.z, new THREE.Vector3(off, 1, bbox.max.z));
+    if (hasNeg) {
+      addSpr(bbox.min.x, new THREE.Vector3(bbox.min.x, 1, off));
+      addSpr(bbox.min.z, new THREE.Vector3(off, 1, bbox.min.z));
+    }
+  } else if (_gridPlane === 'xy') {
+    addSpr(bbox.max.x, new THREE.Vector3(bbox.max.x, off, 1));
+    addSpr(bbox.max.y, new THREE.Vector3(off, bbox.max.y, 1));
+    if (hasNeg) {
+      addSpr(bbox.min.x, new THREE.Vector3(bbox.min.x, off, 1));
+      addSpr(bbox.min.y, new THREE.Vector3(off, bbox.min.y, 1));
+    }
+  } else {  // zy
+    addSpr(bbox.max.z, new THREE.Vector3(1, off, bbox.max.z));
+    addSpr(bbox.max.y, new THREE.Vector3(1, bbox.max.y, off));
+    if (hasNeg) {
+      addSpr(bbox.min.z, new THREE.Vector3(1, off, bbox.min.z));
+      addSpr(bbox.min.y, new THREE.Vector3(1, bbox.min.y, off));
+    }
+  }
+
+  _partLabelGroup = grp;
+  _scene.add(_partLabelGroup);
 }
 
 /**
@@ -1071,6 +1206,7 @@ export function destroyVisualizer() {
     });
     _gridGroup = null;
     _gridSprites = [];
+    _negSprites  = [];
   }
   if (_fadeSphere) {
     if (_scene) _scene.remove(_fadeSphere);
@@ -1078,6 +1214,7 @@ export function destroyVisualizer() {
     _fadeSphere.material.dispose();
     _fadeSphere = null;
   }
+  _clearPartLabels();
   if (_renderer) { _renderer.dispose(); _renderer = null; }
   _scene = null; _camera = null; _controls = null;
   _container = null; _canvas = null; _activeContext = null;
