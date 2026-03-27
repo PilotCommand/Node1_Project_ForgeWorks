@@ -40,9 +40,12 @@ var _canvas    = null;
 var _animFrame = null;
 var _currentMesh = null;  // the THREE.Object3D currently in the scene
 
-var _activeContext   = null;
-var _partYOffset     = false;
-var _axisLabelMode   = 'screen';  // 'screen' | 'part' | 'none'
+var _activeContext       = null;
+var _partYOffset         = false;
+var _partOutline         = false;
+var _outlineMesh         = null;
+var _dynamicOutlineUpdaters = [];  // [{fn}] called each frame to reposition camera-dependent lines
+var _axisLabelMode       = 'screen';
 var _htmlAxisLabels  = null;
 
 // ---------------------------------------------------------------------------
@@ -148,6 +151,25 @@ export function buildVisualizerPanel() {
   offsetLabel.appendChild(offsetCheck);
   offsetLabel.appendChild(document.createTextNode('Lift Part'));
   rightGroup.appendChild(offsetLabel);
+
+  // Outline Part checkbox
+  var outlineLabel = document.createElement('label');
+  Object.assign(outlineLabel.style, {
+    display: 'flex', alignItems: 'center', gap: '5px',
+    cursor: 'pointer', color: '#7a9aaa', fontSize: '8px', letterSpacing: '1px',
+    textTransform: 'uppercase', userSelect: 'none',
+  });
+  var outlineCheck = document.createElement('input');
+  outlineCheck.type    = 'checkbox';
+  outlineCheck.checked = _partOutline;
+  Object.assign(outlineCheck.style, { cursor: 'pointer', accentColor: '#e0c060' });
+  outlineCheck.addEventListener('change', function() {
+    _partOutline = outlineCheck.checked;
+    _updateOutline();
+  });
+  outlineLabel.appendChild(outlineCheck);
+  outlineLabel.appendChild(document.createTextNode('Outline Part'));
+  rightGroup.appendChild(outlineLabel);
 
   // Reset camera button
   var resetBtn = document.createElement('button');
@@ -281,6 +303,7 @@ export function refreshVisualizer(context) {
 
     _scene.add(_currentMesh);
     _fitCamera(_currentMesh);
+    _updateOutline();
   }
 }
 
@@ -349,6 +372,7 @@ function _initThree() {
     _controls.update();
     _updateGrid();
     _updateHtmlAxisLabels();
+    _updateDynamicOutlines();
     _renderer.render(_scene, _camera);
   }
   animate();
@@ -365,6 +389,15 @@ function _onResize() {
 }
 
 function _clearMesh() {
+  // Clear outline first
+  if (_outlineMesh && _scene) {
+    _scene.remove(_outlineMesh);
+    _outlineMesh.traverse(function(o) {
+      if (o.geometry) o.geometry.dispose();
+      if (o.material) o.material.dispose();
+    });
+    _outlineMesh = null;
+  }
   if (_currentMesh && _scene) {
     _scene.remove(_currentMesh);
     _currentMesh.traverse(function(child) {
@@ -378,6 +411,234 @@ function _clearMesh() {
       }
     });
     _currentMesh = null;
+  }
+}
+
+/**
+ * Silhouette outline using screen-space normal extrusion.
+ * A BackSide copy of the mesh is rendered with a vertex shader that pushes
+ * vertices outward along their normals in clip space — consistent pixel-width
+ * outline regardless of zoom or part size.
+ * From any angle: cylinder shows top circle + bottom circle + 2 side lines,
+ * box shows all visible corner edges, etc.
+ */
+// ---------------------------------------------------------------------------
+// Geometric outline — explicit lines computed from shape, camera-tracked silhouette
+// ---------------------------------------------------------------------------
+
+var OUTLINE_COLOR = 0xe8d070;
+var OUTLINE_MAT   = null;  // shared LineBasicMaterial — created on first use
+
+function _getOutlineMat() {
+  if (!OUTLINE_MAT) {
+    OUTLINE_MAT = new THREE.LineBasicMaterial({
+      color:       OUTLINE_COLOR,
+      depthWrite:  false,
+      depthTest:   false,   // ignore depth so fade mask never occludes the outline
+      transparent: false,
+      linewidth:   1,
+    });
+  }
+  return OUTLINE_MAT;
+}
+
+/** Make a circle as a THREE.Line lying in the XZ plane at height y, radius r, centred at cx,cz */
+function _makeCircle(cx, y, cz, r, segments) {
+  segments = segments || 64;
+  var pts = [];
+  for (var i = 0; i <= segments; i++) {
+    var a = (i / segments) * Math.PI * 2;
+    pts.push(new THREE.Vector3(cx + Math.cos(a) * r, y, cz + Math.sin(a) * r));
+  }
+  var geo = new THREE.BufferGeometry().setFromPoints(pts);
+  var line = new THREE.Line(geo, _getOutlineMat());
+  line.renderOrder = 3;
+  return line;
+}
+
+/** Make a vertical line segment from (x, y0, z) to (x, y1, z) */
+function _makeSeg(x0, y0, z0, x1, y1, z1) {
+  var geo = new THREE.BufferGeometry().setFromPoints([
+    new THREE.Vector3(x0, y0, z0),
+    new THREE.Vector3(x1, y1, z1),
+  ]);
+  var line = new THREE.Line(geo, _getOutlineMat());
+  line.renderOrder = 3;
+  return line;
+}
+
+/**
+ * Build a dynamic silhouette segment pair for a cylinder-like shape.
+ * Segments are perpendicular to the camera-to-cylinder direction in XZ,
+ * so they always sit on the visible silhouette edge regardless of camera angle.
+ */
+function _addCylinderSilhouette(cx, cz, r, y0, y1, group) {
+  function makeDynSeg() {
+    var geo = new THREE.BufferGeometry();
+    geo.setAttribute('position', new THREE.Float32BufferAttribute([0,y0,0, 0,y1,0], 3));
+    var line = new THREE.Line(geo, _getOutlineMat());
+    line.renderOrder = 3;
+    return line;
+  }
+  var seg1 = makeDynSeg();
+  var seg2 = makeDynSeg();
+  group.add(seg1);
+  group.add(seg2);
+
+  _dynamicOutlineUpdaters.push(function() {
+    if (!_camera) return;
+    var dx  = _camera.position.x - cx;
+    var dz  = _camera.position.z - cz;
+    var len = Math.sqrt(dx * dx + dz * dz) || 1;
+    // Perpendicular to camera direction in XZ — these are the silhouette points
+    var px1 = cx + (-dz / len) * r,  pz1 = cz + ( dx / len) * r;
+    var px2 = cx + ( dz / len) * r,  pz2 = cz + (-dx / len) * r;
+
+    var a1 = seg1.geometry.attributes.position;
+    a1.setXYZ(0, px1, y0, pz1);
+    a1.setXYZ(1, px1, y1, pz1);
+    a1.needsUpdate = true;
+
+    var a2 = seg2.geometry.attributes.position;
+    a2.setXYZ(0, px2, y0, pz2);
+    a2.setXYZ(1, px2, y1, pz2);
+    a2.needsUpdate = true;
+  });
+}
+
+function _updateOutline() {
+  if (_outlineMesh && _scene) {
+    _scene.remove(_outlineMesh);
+    _outlineMesh.traverse(function(o) {
+      if (o.geometry) o.geometry.dispose();
+    });
+    _outlineMesh = null;
+  }
+  _dynamicOutlineUpdaters = [];
+
+  if (!_partOutline || !_currentMesh || !_scene) return;
+
+  var part  = S.getPart();
+  var group = new THREE.Group();
+  group.renderOrder = 3;
+
+  // Use actual bounding box for Y extents — works correctly for all shapes
+  // including hex which has a non-trivial centering offset
+  var meshBox = new THREE.Box3().setFromObject(_currentMesh);
+  var y0 = meshBox.min.y;
+  var y1 = meshBox.max.y;
+
+  switch (part.productType) {
+
+    case 'bar': {
+      var L = part.barLength || 500;
+
+      if (part.barShape === 'round') {
+        var r = (part.barDiameter || 100) / 2;
+        group.add(_makeCircle(0, y1, 0, r));
+        group.add(_makeCircle(0, y0, 0, r));
+        _addCylinderSilhouette(0, 0, r, y0, y1, group);
+
+      } else if (part.barShape === 'hexagonal') {
+        var af  = part.barAcrossFlats || 100;
+        var hr  = af / Math.cos(Math.PI / 6) / 2;
+        [y0, y1].forEach(function(yy) {
+          var pts = [];
+          for (var hi = 0; hi <= 6; hi++) {
+            var ha = (Math.PI / 6) + hi * (Math.PI / 3);
+            pts.push(new THREE.Vector3(Math.cos(ha) * hr, yy, Math.sin(ha) * hr));
+          }
+          var geo = new THREE.BufferGeometry().setFromPoints(pts);
+          var ln  = new THREE.Line(geo, _getOutlineMat());
+          ln.renderOrder = 3;
+          group.add(ln);
+        });
+        for (var hi2 = 0; hi2 < 6; hi2++) {
+          var ha2 = (Math.PI / 6) + hi2 * (Math.PI / 3);
+          var hx  = Math.cos(ha2) * hr, hz = Math.sin(ha2) * hr;
+          group.add(_makeSeg(hx, y0, hz, hx, y1, hz));
+        }
+
+      } else if (part.barShape === 'rectangular') {
+        var W  = part.barWidth     || 100;
+        var T  = part.barThickness || 50;
+        var hw = W / 2, ht = T / 2;
+        var corners = [[-hw,-ht],[hw,-ht],[hw,ht],[-hw,ht]];
+        [y0, y1].forEach(function(yy) {
+          var rpts = corners.map(function(c){ return new THREE.Vector3(c[0], yy, c[1]); });
+          rpts.push(rpts[0].clone());
+          var geo = new THREE.BufferGeometry().setFromPoints(rpts);
+          var ln  = new THREE.Line(geo, _getOutlineMat());
+          ln.renderOrder = 3;
+          group.add(ln);
+        });
+        corners.forEach(function(c) {
+          group.add(_makeSeg(c[0], y0, c[1], c[0], y1, c[1]));
+        });
+      }
+      break;
+    }
+
+    case 'disc': {
+      var dR = (part.discOD || 300) / 2;
+      group.add(_makeCircle(0, y1, 0, dR));
+      group.add(_makeCircle(0, y0, 0, dR));
+      _addCylinderSilhouette(0, 0, dR, y0, y1, group);
+      break;
+    }
+
+    case 'ring': {
+      var rOD = (part.ringOD || 400) / 2;
+      var rID = (part.ringID || 200) / 2;
+      group.add(_makeCircle(0, y1, 0, rOD));
+      group.add(_makeCircle(0, y0, 0, rOD));
+      _addCylinderSilhouette(0, 0, rOD, y0, y1, group);
+      group.add(_makeCircle(0, y1, 0, rID));
+      group.add(_makeCircle(0, y0, 0, rID));
+      _addCylinderSilhouette(0, 0, rID, y0, y1, group);
+      break;
+    }
+
+    case 'mushroom': {
+      var fD    = (part.flangeDiam || 300) / 2;
+      var sD    = (part.stemDiam   || 100) / 2;
+      var tH    = part.totalHeight || 200;
+      var flangeH = tH * 0.25;
+      var stemH   = tH * 0.75;
+      // stem bottom = y0, stem/flange join = y0+stemH, flange top = y1
+      var joinY = y0 + stemH;
+      group.add(_makeCircle(0, y0,   0, sD));
+      group.add(_makeCircle(0, joinY,0, sD));
+      _addCylinderSilhouette(0, 0, sD, y0, joinY, group);
+      group.add(_makeCircle(0, joinY,0, fD));
+      group.add(_makeCircle(0, y1,   0, fD));
+      _addCylinderSilhouette(0, 0, fD, joinY, y1, group);
+      break;
+    }
+
+    default: {
+      var bh = 50;
+      var bc = [[-bh,-bh],[bh,-bh],[bh,bh],[-bh,bh]];
+      [y0, y1].forEach(function(yy) {
+        var ps = bc.map(function(c){ return new THREE.Vector3(c[0],yy,c[1]); });
+        ps.push(ps[0].clone());
+        var g2 = new THREE.BufferGeometry().setFromPoints(ps);
+        var l2 = new THREE.Line(g2, _getOutlineMat());
+        l2.renderOrder = 3;
+        group.add(l2);
+      });
+      bc.forEach(function(c){ group.add(_makeSeg(c[0],y0,c[1],c[0],y1,c[1])); });
+      break;
+    }
+  }
+
+  _outlineMesh = group;
+  _scene.add(_outlineMesh);
+}
+
+function _updateDynamicOutlines() {
+  for (var i = 0; i < _dynamicOutlineUpdaters.length; i++) {
+    _dynamicOutlineUpdaters[i]();
   }
 }
 

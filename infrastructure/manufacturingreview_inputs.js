@@ -47,6 +47,7 @@ var _refreshRightPanel  = function() {};
 var _refreshCalcPanel   = function() {};
 var _refreshNodeEl      = function() {};
 var _refreshStatusBadge = function() {};
+var _refreshVisualizer  = function() {};
 
 // Injected from manufacturingreview.js — these require renderNodeEl / showToast
 // which live there and cannot be imported here without a circular dependency.
@@ -58,6 +59,7 @@ export function init(callbacks) {
   if (callbacks.refreshCalcPanel)   _refreshCalcPanel   = callbacks.refreshCalcPanel;
   if (callbacks.refreshNodeEl)      _refreshNodeEl      = callbacks.refreshNodeEl;
   if (callbacks.refreshStatusBadge) _refreshStatusBadge = callbacks.refreshStatusBadge;
+  if (callbacks.refreshVisualizer)  _refreshVisualizer  = callbacks.refreshVisualizer;
   if (callbacks.openOrder)          _openOrder          = callbacks.openOrder;
   if (callbacks.saveActiveOrder)    _saveActiveOrder    = callbacks.saveActiveOrder;
 }
@@ -241,6 +243,9 @@ export function refreshLeftPanel() {
 function partDirty() {
   S.setIsDirty(true);
   _refreshRightPanel();
+  // Always show the part context while editing Part tab fields,
+  // even if a node happens to be selected.
+  _refreshVisualizer({ type: 'part' });
 }
 
 function buildPartInputs() {

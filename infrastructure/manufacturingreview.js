@@ -74,6 +74,9 @@ import {
   buildStepWorkings,
 } from './manufacturingreview_estimates.js';
 import {
+  refreshVisualizer,
+} from './manufacturingreview_visualizer.js';
+import {
   init           as initInputs,
   buildLeftPanel,
   refreshLeftPanel,
@@ -157,6 +160,7 @@ function buildOverlay() {
     refreshStatusBadge: refreshStatusBadge,
     openOrder:          openOrder,
     saveActiveOrder:    saveActiveOrder,
+    refreshVisualizer:  refreshVisualizer,
   });
 
   // Add the permanent example delivery order (always first in the list).
